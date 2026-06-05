@@ -124,6 +124,27 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $configContent .= "define('DB_USER', '{$user}');\n";
         $configContent .= "define('DB_PASS', '{$pass}');\n";
         $configContent .= "define('DB_CHARSET', 'utf8mb4');\n";
+        $configContent .= "\n";
+        $configContent .= "// 应用配置\n";
+        $configContent .= "define('APP_NAME', '课后服务预算管理系统');\n";
+        $configContent .= "define('APP_VERSION', '1.0.0');\n";
+        $configContent .= "define('CURRENT_YEAR', date('Y'));\n";
+        $configContent .= "define('CURRENT_MONTH', intval(date('m')));\n";
+        $configContent .= "\n";
+        $configContent .= "// 年级列表\n";
+        $configContent .= "\$GRADES = [\n";
+        $configContent .= "    1 => '一年级',\n";
+        $configContent .= "    2 => '二年级',\n";
+        $configContent .= "    3 => '三年级',\n";
+        $configContent .= "    4 => '四年级',\n";
+        $configContent .= "    5 => '五年级',\n";
+        $configContent .= "    6 => '六年级'\n";
+        $configContent .= "];\n";
+        $configContent .= "\n";
+        $configContent .= "// 错误报告\n";
+        $configContent .= "error_reporting(E_ALL);\n";
+        $configContent .= "ini_set('display_errors', 0);\n";
+        $configContent .= "ini_set('log_errors', 1);\n";
 
         file_put_contents(__DIR__ . '/config.php', $configContent);
 
