@@ -29,15 +29,17 @@ flowchart TD
 |------|------|------|
 | `/` | GET | 首页 - 年级导航 + 管理员登录入口 |
 | `/grade.php?g={id}` | GET | 年级干事填写页 |
-| `/grade.php?g={id}` | POST | 提交年级上课数据 |
+| `/grade.php?g={id}` | POST | 提交年级上课数据 + 校外教师课时 |
 | `/admin/login.php` | GET | 管理员登录页 |
 | `/admin/login.php` | POST | 管理员登录提交 |
 | `/admin/dashboard.php` | GET | 管理员后台首页 |
 | `/admin/settings.php` | GET/POST | 月度参数设置 |
 | `/admin/classes.php` | GET/POST | 班级管理 |
-| `/admin/statistics.php` | GET | 统计报表 |
+| `/admin/statistics.php` | GET | 统计报表（含教师课时管理） |
+| `/admin/teacher_lessons.php` | GET/POST | 校外教师课时管理（新增/编辑/删除） |
 | `/admin/logout.php` | GET | 退出登录 |
 | `/api/data.php` | GET | 获取统计数据（AJAX） |
+| `/api/teacher_lessons.php` | POST | 教师课时CRUD操作（AJAX） |
 
 ## 4. API定义
 
@@ -61,15 +63,23 @@ flowchart TD
         ['lesson_number' => 2, 'student_count' => 38, 'lesson_hours' => 38.0]
       ]
     ]
+  ],
+  'teacher_lessons' => [
+    ['id' => 1, 'teacher_name' => '张老师', 'lesson_count' => 20]
   ]
 ]
 
 // POST /grade.php?g={id} 提交数据
 // request: {
 //   attendance: [{ class_id: 1, lesson_number: 1, student_count: 40 }, ...],
-//   teacher_name: "张老师",
-//   teacher_lessons: 20
+//   teachers: [{ teacher_name: "张老师", lesson_count: 20 }, ...]
 // }
+
+// POST /api/teacher_lessons.php 教师课时管理（管理员）
+// action: add    -> { grade_id, teacher_name, lesson_count, year, month }
+// action: edit   -> { id, teacher_name, lesson_count }
+// action: delete -> { id }
+// response: { success: true }
 ```
 
 ## 5. 服务器架构图
