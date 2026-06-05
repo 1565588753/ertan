@@ -54,11 +54,20 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 `grade_id` INT NOT NULL,
                 `year` INT NOT NULL,
                 `month` INT NOT NULL,
-                `teaching_days` INT NOT NULL DEFAULT 0 COMMENT '上课天数',
-                `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每节课单价(元)',
-                `cap_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每人封顶价(元)',
+                `teaching_days` INT NOT NULL DEFAULT 0 COMMENT '上课节数',
                 FOREIGN KEY (`grade_id`) REFERENCES `grades`(`id`) ON DELETE CASCADE,
                 UNIQUE KEY `uk_grade_month` (`grade_id`, `year`, `month`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `fee_settings` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `year` INT NOT NULL,
+                `month` INT NOT NULL,
+                `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每节课单价(元)',
+                `cap_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每人封顶价(元)',
+                UNIQUE KEY `uk_month` (`year`, `month`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
 

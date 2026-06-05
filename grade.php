@@ -1,4 +1,5 @@
 <?php
+session_start();
 require_once __DIR__ . '/db.php';
 $db = Database::getInstance();
 
@@ -18,9 +19,20 @@ if (!$grade) {
 $year = isset($_GET['year']) ? intval($_GET['year']) : CURRENT_YEAR;
 $month = isset($_GET['month']) ? intval($_GET['month']) : CURRENT_MONTH;
 
-// 获取年级设置
+// 是否为管理员
+$isAdmin = isset($_SESSION['admin_id']);
+
+// 获取管理员设置的年级上课节数
 $setting = $db->fetchOne("SELECT * FROM grade_settings WHERE grade_id = ? AND year = ? AND month = ?", 
     [$gradeId, $year, $month]);
+$teachingDays = intval($setting['teaching_days'] ?? 0);
+// 默认显示10节
+if ($teachingDays < 1) $teachingDays = 10;
+
+// 获取全校统一收费标准（仅管理员可见）
+$feeSetting = $db->fetchOne("SELECT * FROM fee_settings WHERE year = ? AND month = ?", [$year, $month]);
+$unitPrice = floatval($feeSetting['unit_price'] ?? 0);
+$capPrice = floatval($feeSetting['cap_price'] ?? 0);
 
 // 获取班级列表
 $classes = $db->fetchAll("SELECT * FROM classes WHERE grade_id = ? ORDER BY id ASC", [$gradeId]);
@@ -38,12 +50,6 @@ if (!empty($classes)) {
         $attendanceData[$r['class_id']][$r['lesson_number']] = $r;
     }
 }
-
-// 获取已保存的校外教师数据
-$teachers = $db->fetchAll(
-    "SELECT * FROM teacher_lessons WHERE grade_id = ? AND year = ? AND month = ?",
-    [$gradeId, $year, $month]
-);
 
 // 处理提交
 $submitSuccess = false;
@@ -83,24 +89,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // 保存校外教师数据
-        if (isset($_POST['teachers']) && is_array($_POST['teachers'])) {
-            // 删除旧数据
-            $db->execute("DELETE FROM teacher_lessons WHERE grade_id = ? AND year = ? AND month = ?", 
-                [$gradeId, $year, $month]);
-            
-            foreach ($_POST['teachers'] as $t) {
-                $tName = trim($t['name'] ?? '');
-                $tCount = intval($t['count'] ?? 0);
-                if ($tName !== '' && $tCount > 0) {
-                    $db->execute(
-                        "INSERT INTO teacher_lessons (grade_id, teacher_name, lesson_count, year, month) VALUES (?, ?, ?, ?, ?)",
-                        [$gradeId, $tName, $tCount, $year, $month]
-                    );
-                }
-            }
-        }
-
         $db->getPdo()->commit();
         $submitSuccess = true;
 
@@ -118,10 +106,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $attendanceData[$r['class_id']][$r['lesson_number']] = $r;
             }
         }
-        $teachers = $db->fetchAll(
-            "SELECT * FROM teacher_lessons WHERE grade_id = ? AND year = ? AND month = ?",
-            [$gradeId, $year, $month]
-        );
     } catch (Exception $e) {
         $db->getPdo()->rollBack();
         $submitError = '保存失败：' . $e->getMessage();
@@ -183,7 +167,7 @@ $gradeColor = $gradeColors[$gradeId - 1] ?? '#3b82f6';
             padding: 3px 14px;
             border-radius: 12px;
         }
-        .lesson-count-control {
+        .lesson-count-info {
             display: flex;
             align-items: center;
             gap: 8px;
@@ -193,25 +177,18 @@ $gradeColor = $gradeColors[$gradeId - 1] ?? '#3b82f6';
             margin-bottom: 12px;
             box-shadow: var(--shadow-sm);
         }
-        .lesson-count-control label {
+        .lesson-count-info label {
             font-size: 14px;
             font-weight: 600;
             color: var(--text);
         }
-        .lesson-count-control select {
-            padding: 6px 30px 6px 12px;
-            border: 2px solid var(--border);
+        .lesson-count-info .lesson-badge {
+            padding: 6px 16px;
+            background: var(--primary);
+            color: #fff;
             border-radius: 8px;
             font-size: 15px;
             font-weight: 600;
-            color: var(--primary);
-            background: #fff;
-            outline: none;
-            -webkit-appearance: none;
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 8px center;
         }
         .save-bar {
             position: sticky;
@@ -236,15 +213,13 @@ $gradeColor = $gradeColors[$gradeId - 1] ?? '#3b82f6';
     <a href="index.php" class="back-link">← 返回</a>
     <h1><?= htmlspecialchars($grade['name']) ?></h1>
     <p><?= $year ?>年<?= $month ?>月 课后服务数据填写</p>
+    <?php if ($isAdmin): ?>
     <div class="price-info">
-        <?php if ($setting): ?>
-        <span>单价：<?= number_format($setting['unit_price'], 2) ?>元/节</span>
-        <span>封顶：<?= number_format($setting['cap_price'], 2) ?>元/人</span>
-        <span>天数：<?= $setting['teaching_days'] ?>天</span>
-        <?php else: ?>
-        <span>暂未设置月度参数</span>
-        <?php endif; ?>
+        <span>单价：<?= number_format($unitPrice, 2) ?>元/节</span>
+        <span>封顶：<?= number_format($capPrice, 2) ?>元/人</span>
+        <span>节数：<?= $teachingDays ?>节</span>
     </div>
+    <?php endif; ?>
 </div>
 
 <div class="container page-content">
@@ -285,80 +260,39 @@ $gradeColor = $gradeColors[$gradeId - 1] ?? '#3b82f6';
     </div>
     <?php else: ?>
 
-    <form method="post" id="mainForm">
-        <!-- 课节数控制 -->
-        <div class="lesson-count-control">
-            <label>📚 每班课节数：</label>
-            <select id="lessonCountSelect" onchange="updateLessonRows()">
-                <?php for ($i = 1; $i <= 20; $i++): ?>
-                <option value="<?= $i ?>" <?= $i === 10 ? 'selected' : '' ?>><?= $i ?> 节课</option>
-                <?php endfor; ?>
-            </select>
-        </div>
+    <!-- 课节数提示 -->
+    <div class="lesson-count-info">
+        <label>📚 每班课节数：</label>
+        <span class="lesson-badge"><?= $teachingDays ?> 节</span>
+    </div>
 
+    <form method="post" id="mainForm">
         <!-- 班级列表 -->
         <?php foreach ($classes as $class): ?>
         <div class="attendance-card">
             <div class="class-header">
                 <span class="class-name"><?= htmlspecialchars($grade['name']) ?> <?= htmlspecialchars($class['name']) ?></span>
-                <span class="badge badge-primary" id="total_<?= $class['id'] ?>">合计：0 课时</span>
+                <span class="badge badge-primary" id="total_<?= $class['id'] ?>">合计：0 人</span>
             </div>
             <div class="class-body" id="lessons_<?= $class['id'] ?>">
-                <?php
-                // 最多显示20节课
-                $maxLessons = 20;
-                for ($l = 1; $l <= $maxLessons; $l++) {
+                <?php for ($l = 1; $l <= $teachingDays; $l++) {
                     $saved = isset($attendanceData[$class['id']][$l]) ? $attendanceData[$class['id']][$l] : null;
                     $count = $saved ? intval($saved['student_count']) : 0;
                     $hours = $saved ? floatval($saved['lesson_hours']) : 0;
                 ?>
-                <div class="lesson-row" data-lesson="<?= $l ?>" style="<?= $l > 10 ? 'display:none' : '' ?>">
-                    <span class="lesson-label">第<?= $l ?>节</span>
+                <div class="lesson-row">
+                    <span class="lesson-label">上<?= $l ?>节</span>
                     <input type="number" class="lesson-input" 
                            name="attendance[<?= $class['id'] ?>][<?= $l ?>]" 
                            value="<?= $count ?>" min="0" max="999" 
                            placeholder="人数" 
-                           oninput="calcLesson(<?= $class['id'] ?>, <?= $l ?>)" />
+                           oninput="updateTotal(<?= $class['id'] ?>)" />
                     <span>人</span>
-                    <span class="lesson-result" id="result_<?= $class['id'] ?>_<?= $l ?>"><?= $hours > 0 ? $hours : '' ?></span>
-                    <span style="font-size:12px;color:var(--text-light)">课时</span>
                 </div>
                 <?php } ?>
             </div>
         </div>
         <?php endforeach; ?>
-
-        <!-- 校外教师课时 -->
-        <div class="teacher-section">
-            <h3>👩‍🏫 校外教师课时</h3>
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">填写本年级校外教师的姓名和本月上课节数</p>
-            <div id="teacherList">
-                <?php if (!empty($teachers)): ?>
-                <?php foreach ($teachers as $i => $t): ?>
-                <div class="teacher-row">
-                    <input type="text" class="t-name form-control form-control-sm" 
-                           name="teachers[<?= $i ?>][name]" value="<?= htmlspecialchars($t['teacher_name']) ?>" 
-                           placeholder="教师姓名">
-                    <input type="number" class="t-count form-control form-control-sm" 
-                           name="teachers[<?= $i ?>][count]" value="<?= intval($t['lesson_count']) ?>" 
-                           min="0" placeholder="节数">
-                    <button type="button" class="btn btn-danger btn-xs" onclick="this.closest('.teacher-row').remove()">✕</button>
-                </div>
-                <?php endforeach; ?>
-                <?php else: ?>
-                <?php for ($i = 0; $i < 2; $i++): ?>
-                <div class="teacher-row">
-                    <input type="text" class="t-name form-control form-control-sm" 
-                           name="teachers[<?= $i ?>][name]" value="" placeholder="教师姓名">
-                    <input type="number" class="t-count form-control form-control-sm" 
-                           name="teachers[<?= $i ?>][count]" value="" min="0" placeholder="节数">
-                    <button type="button" class="btn btn-danger btn-xs" onclick="this.closest('.teacher-row').remove()">✕</button>
-                </div>
-                <?php endfor; ?>
-                <?php endif; ?>
-            </div>
-            <button type="button" class="btn btn-outline btn-sm mt-8" onclick="addTeacherRow()">+ 添加教师</button>
-        </div>
 
         <!-- 底部保存栏 -->
         <div class="save-bar">
@@ -369,16 +303,6 @@ $gradeColor = $gradeColors[$gradeId - 1] ?? '#3b82f6';
 </div>
 
 <script>
-    // 课时自动计算
-    function calcLesson(classId, lessonNum) {
-        var input = document.querySelector('input[name="attendance[' + classId + '][' + lessonNum + ']"]');
-        var result = document.getElementById('result_' + classId + '_' + lessonNum);
-        var count = parseInt(input.value) || 0;
-        var hours = count; // 课时数 = 人数 × 1节
-        result.textContent = hours > 0 ? hours : '';
-        updateTotal(classId);
-    }
-
     // 更新合计
     function updateTotal(classId) {
         var inputs = document.querySelectorAll('input[name^="attendance[' + classId + ']"]');
@@ -387,46 +311,7 @@ $gradeColor = $gradeColors[$gradeId - 1] ?? '#3b82f6';
             total += parseInt(inp.value) || 0;
         });
         var badge = document.getElementById('total_' + classId);
-        if (badge) badge.textContent = '合计：' + total + ' 课时';
-    }
-
-    // 显示/隐藏课节行
-    function updateLessonRows() {
-        var count = parseInt(document.getElementById('lessonCountSelect').value) || 10;
-        document.querySelectorAll('.lesson-row').forEach(function(row) {
-            var lesson = parseInt(row.dataset.lesson);
-            row.style.display = lesson <= count ? 'flex' : 'none';
-        });
-        // 重新计算所有合计
-        var classCards = document.querySelectorAll('.attendance-card');
-        classCards.forEach(function(card) {
-            var header = card.querySelector('.class-header');
-            if (header) {
-                var name = header.querySelector('.class-name');
-                if (name) {
-                    // Extract classId from the first input name
-                    var firstInput = card.querySelector('input[name^="attendance["]');
-                    if (firstInput) {
-                        var match = firstInput.name.match(/attendance\[(\d+)\]/);
-                        if (match) updateTotal(parseInt(match[1]));
-                    }
-                }
-            }
-        });
-    }
-
-    // 添加教师行
-    var teacherIdx = <?= max(count($teachers), 2) ?>;
-    function addTeacherRow() {
-        var list = document.getElementById('teacherList');
-        var div = document.createElement('div');
-        div.className = 'teacher-row';
-        div.innerHTML = 
-            '<input type="text" class="t-name form-control form-control-sm" name="teachers[' + teacherIdx + '][name]" value="" placeholder="教师姓名">' +
-            '<input type="number" class="t-count form-control form-control-sm" name="teachers[' + teacherIdx + '][count]" value="" min="0" placeholder="节数">' +
-            '<button type="button" class="btn btn-danger btn-xs" onclick="this.closest(\'.teacher-row\').remove()">✕</button>';
-        list.appendChild(div);
-        teacherIdx++;
+        if (badge) badge.textContent = '合计：' + total + ' 人';
     }
 
     // 初始化合计

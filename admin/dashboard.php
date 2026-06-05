@@ -5,6 +5,11 @@ $db = Database::getInstance();
 $year = isset($_GET['year']) ? intval($_GET['year']) : CURRENT_YEAR;
 $month = isset($_GET['month']) ? intval($_GET['month']) : CURRENT_MONTH;
 
+// 获取全校统一收费标准
+$feeSetting = $db->fetchOne("SELECT * FROM fee_settings WHERE year = ? AND month = ?", [$year, $month]);
+$unitPrice = floatval($feeSetting['unit_price'] ?? 0);
+$capPrice = floatval($feeSetting['cap_price'] ?? 0);
+
 // 统计概览
 $totalStudents = 0;
 $totalLessons = 0;
@@ -14,9 +19,6 @@ $gradeStats = [];
 $grades = $db->fetchAll("SELECT * FROM grades ORDER BY sort_order");
 
 foreach ($grades as $g) {
-    $setting = $db->fetchOne("SELECT * FROM grade_settings WHERE grade_id = ? AND year = ? AND month = ?", 
-        [$g['id'], $year, $month]);
-    
     $classes = $db->fetchAll("SELECT id FROM classes WHERE grade_id = ?", [$g['id']]);
     $classIds = array_column($classes, 'id');
     
@@ -30,17 +32,13 @@ foreach ($grades as $g) {
         if ($att && $att[0]['sc']) {
             $students = intval($att[0]['sc']);
             $lessons = floatval($att[0]['lh']);
-            if ($setting) {
-                $fees = $students * floatval($setting['unit_price']);
-                // 应用封顶价：按实际人数，每人不超过cap_price
+            if ($unitPrice > 0) {
                 $classCounts = $db->fetchAll("SELECT class_id, SUM(student_count) as total FROM attendance WHERE class_id IN ({$ids}) AND year = ? AND month = ? GROUP BY class_id", [$year, $month]);
                 $fees = 0;
                 foreach ($classCounts as $cc) {
-                    $cap = floatval($setting['cap_price']);
-                    $unitPrice = floatval($setting['unit_price']);
                     $count = intval($cc['total']);
                     $raw = $count * $unitPrice;
-                    $fees += min($raw, $cap * $count);
+                    $fees += min($raw, $capPrice * $count);
                 }
             }
         }

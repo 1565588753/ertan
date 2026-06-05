@@ -14,30 +14,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($action === 'add') {
             $gradeId = intval($_POST['grade_id'] ?? 0);
-            $tName = trim($_POST['teacher_name'] ?? '');
             $tCount = intval($_POST['lesson_count'] ?? 0);
             
             if ($gradeId < 1 || $gradeId > 6) throw new Exception('请选择年级');
-            if ($tName === '') throw new Exception('请输入教师姓名');
             if ($tCount < 0) $tCount = 0;
             
             $db->execute(
                 "INSERT INTO teacher_lessons (grade_id, teacher_name, lesson_count, year, month) VALUES (?, ?, ?, ?, ?)",
-                [$gradeId, $tName, $tCount, $year, $month]
+                [$gradeId, '校外教师', $tCount, $year, $month]
             );
             $message = '教师课时记录已添加';
         } elseif ($action === 'edit') {
             $id = intval($_POST['id'] ?? 0);
-            $tName = trim($_POST['teacher_name'] ?? '');
             $tCount = intval($_POST['lesson_count'] ?? 0);
             
             if ($id < 1) throw new Exception('参数错误');
-            if ($tName === '') throw new Exception('请输入教师姓名');
             if ($tCount < 0) $tCount = 0;
             
             $db->execute(
-                "UPDATE teacher_lessons SET teacher_name = ?, lesson_count = ? WHERE id = ?",
-                [$tName, $tCount, $id]
+                "UPDATE teacher_lessons SET lesson_count = ? WHERE id = ?",
+                [$tCount, $id]
             );
             $message = '教师课时记录已更新';
         } elseif ($action === 'delete') {
@@ -123,7 +119,7 @@ adminHeader('校外教师课时管理');
 <!-- 添加新记录 -->
 <div class="card">
     <div class="card-header">
-        <h3>添加教师课时</h3>
+        <h3>添加课时</h3>
     </div>
     <form method="post" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;">
         <input type="hidden" name="action" value="add">
@@ -135,10 +131,6 @@ adminHeader('校外教师课时管理');
                 <option value="<?= $g['id'] ?>"><?= htmlspecialchars($g['name']) ?></option>
                 <?php endforeach; ?>
             </select>
-        </div>
-        <div class="form-group" style="margin-bottom:0;min-width:120px;">
-            <label style="font-size:13px;">教师姓名</label>
-            <input type="text" name="teacher_name" class="form-control form-control-sm" placeholder="姓名" required>
         </div>
         <div class="form-group" style="margin-bottom:0;min-width:80px;">
             <label style="font-size:13px;">上课节数</label>
@@ -167,7 +159,6 @@ adminHeader('校外教师课时管理');
             <thead>
                 <tr>
                     <th>年级</th>
-                    <th>教师姓名</th>
                     <th>上课节数</th>
                     <th>操作</th>
                 </tr>
@@ -176,12 +167,6 @@ adminHeader('校外教师课时管理');
                 <?php foreach ($teachers as $t): ?>
                 <tr>
                     <td><?= htmlspecialchars($t['grade_name']) ?></td>
-                    <td>
-                        <span id="name_<?= $t['id'] ?>"><?= htmlspecialchars($t['teacher_name']) ?></span>
-                        <input type="text" id="edit_name_<?= $t['id'] ?>" 
-                               value="<?= htmlspecialchars($t['teacher_name']) ?>" 
-                               class="form-control form-control-sm" style="display:none;width:120px;">
-                    </td>
                     <td>
                         <span id="count_<?= $t['id'] ?>"><?= intval($t['lesson_count']) ?></span>
                         <input type="number" id="edit_count_<?= $t['id'] ?>" 
@@ -215,9 +200,7 @@ adminHeader('校外教师课时管理');
 
 <script>
 function editMode(id) {
-    document.getElementById('name_' + id).style.display = 'none';
     document.getElementById('count_' + id).style.display = 'none';
-    document.getElementById('edit_name_' + id).style.display = 'inline-block';
     document.getElementById('edit_count_' + id).style.display = 'inline-block';
     document.getElementById('edit_btn_' + id).style.display = 'none';
     document.getElementById('save_btn_' + id).style.display = 'inline-flex';
@@ -225,9 +208,7 @@ function editMode(id) {
 }
 
 function cancelEdit(id) {
-    document.getElementById('name_' + id).style.display = 'inline';
     document.getElementById('count_' + id).style.display = 'inline';
-    document.getElementById('edit_name_' + id).style.display = 'none';
     document.getElementById('edit_count_' + id).style.display = 'none';
     document.getElementById('edit_btn_' + id).style.display = 'inline-flex';
     document.getElementById('save_btn_' + id).style.display = 'none';
@@ -235,7 +216,6 @@ function cancelEdit(id) {
 }
 
 function saveEdit(id) {
-    var name = document.getElementById('edit_name_' + id).value;
     var count = document.getElementById('edit_count_' + id).value;
     
     var form = document.createElement('form');
@@ -243,7 +223,6 @@ function saveEdit(id) {
     form.innerHTML = 
         '<input type="hidden" name="action" value="edit">' +
         '<input type="hidden" name="id" value="' + id + '">' +
-        '<input type="hidden" name="teacher_name" value="' + name.replace(/"/g, '&quot;') + '">' +
         '<input type="hidden" name="lesson_count" value="' + count + '">';
     document.body.appendChild(form);
     form.submit();

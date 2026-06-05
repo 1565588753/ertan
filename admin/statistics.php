@@ -6,6 +6,11 @@ $year = isset($_GET['year']) ? intval($_GET['year']) : CURRENT_YEAR;
 $month = isset($_GET['month']) ? intval($_GET['month']) : CURRENT_MONTH;
 $gradeFilter = isset($_GET['grade_id']) ? intval($_GET['grade_id']) : 0;
 
+// 获取全校统一收费标准
+$feeSetting = $db->fetchOne("SELECT * FROM fee_settings WHERE year = ? AND month = ?", [$year, $month]);
+$unitPrice = floatval($feeSetting['unit_price'] ?? 0);
+$capPrice = floatval($feeSetting['cap_price'] ?? 0);
+
 $grades = $db->fetchAll("SELECT * FROM grades ORDER BY sort_order");
 
 // 构建查询条件
@@ -13,8 +18,6 @@ $whereGrade = $gradeFilter > 0 ? "AND g.id = {$gradeFilter}" : '';
 
 // 各年级详细统计
 $sql = "SELECT g.id as grade_id, g.name as grade_name, g.sort_order,
-        COALESCE(gs.unit_price, 0) as unit_price,
-        COALESCE(gs.cap_price, 0) as cap_price,
         COALESCE(gs.teaching_days, 0) as teaching_days
         FROM grades g
         LEFT JOIN grade_settings gs ON gs.grade_id = g.id AND gs.year = ? AND gs.month = ?
@@ -43,11 +46,10 @@ foreach ($gradeStats as &$gs) {
         $lh = floatval($atts[0]['lh'] ?? 0);
         
         $fee = 0;
-        if ($sc > 0 && $gs['unit_price'] > 0) {
-            $rawFee = $sc * floatval($gs['unit_price']);
-            $capPerPerson = floatval($gs['cap_price']);
-            if ($capPerPerson > 0) {
-                $fee = min($rawFee, $sc * $capPerPerson);
+        if ($sc > 0 && $unitPrice > 0) {
+            $rawFee = $sc * $unitPrice;
+            if ($capPrice > 0) {
+                $fee = min($rawFee, $sc * $capPrice);
             } else {
                 $fee = $rawFee;
             }
@@ -128,9 +130,9 @@ adminHeader('统计报表');
     <div class="card-header">
         <h3><?= htmlspecialchars($gs['grade_name']) ?></h3>
         <div style="font-size:13px;color:var(--text-secondary);">
-            单价：¥<?= number_format($gs['unit_price'], 2) ?> | 
-            封顶：¥<?= number_format($gs['cap_price'], 2) ?> | 
-            天数：<?= $gs['teaching_days'] ?>天
+            单价：¥<?= number_format($unitPrice, 2) ?> | 
+            封顶：¥<?= number_format($capPrice, 2) ?> | 
+            节数：<?= $gs['teaching_days'] ?>节
         </div>
     </div>
 
