@@ -6,10 +6,11 @@ $year = isset($_GET['year']) ? intval($_GET['year']) : CURRENT_YEAR;
 $month = isset($_GET['month']) ? intval($_GET['month']) : CURRENT_MONTH;
 $gradeFilter = isset($_GET['grade_id']) ? intval($_GET['grade_id']) : 0;
 
-// 获取全校统一收费标准
-$feeSetting = $db->fetchOne("SELECT * FROM fee_settings WHERE year = ? AND month = ?", [$year, $month]);
-$unitPrice = floatval($feeSetting['unit_price'] ?? 0);
-$capPrice = floatval($feeSetting['cap_price'] ?? 0);
+// 获取多套收费方案
+$feePlans = $db->fetchAll(
+    "SELECT * FROM fee_plans WHERE year = ? AND month = ? ORDER BY sort_order ASC, id ASC",
+    [$year, $month]
+);
 
 $grades = $db->fetchAll("SELECT * FROM grades ORDER BY sort_order");
 
@@ -35,7 +36,6 @@ foreach ($gradeStats as &$gs) {
     $classDetails = [];
     $totalStudents = 0;
     $totalLessons = 0;
-    $totalFee = 0;
     
     foreach ($classes as $c) {
         $atts = $db->fetchAll(
@@ -45,44 +45,60 @@ foreach ($gradeStats as &$gs) {
         $sc = intval($atts[0]['sc'] ?? 0);
         $lh = floatval($atts[0]['lh'] ?? 0);
         
-        $fee = 0;
-        if ($sc > 0 && $unitPrice > 0) {
-            $rawFee = $sc * $unitPrice;
-            if ($capPrice > 0) {
-                $fee = min($rawFee, $sc * $capPrice);
-            } else {
-                $fee = $rawFee;
-            }
-        }
-        
         $totalStudents += $sc;
         $totalLessons += $lh;
-        $totalFee += $fee;
         
         $classDetails[] = [
             'name' => $c['name'],
             'students' => $sc,
-            'lessons' => $lh,
-            'fee' => $fee
+            'lessons' => $lh
         ];
     }
     
-    // 教师数据
+    // 教师课时数据 (teacher_hours - 上课教师)
     $teachers = $db->fetchAll(
+        "SELECT * FROM teacher_hours WHERE grade_id = ? AND year = ? AND month = ? ORDER BY id ASC",
+        [$gid, $year, $month]
+    );
+    $totalTeacherHours = 0;
+    foreach ($teachers as $t) {
+        $totalTeacherHours += floatval($t['hours']);
+    }
+    
+    // 校外教师数据 (teacher_lessons)
+    $extTeachers = $db->fetchAll(
         "SELECT * FROM teacher_lessons WHERE grade_id = ? AND year = ? AND month = ?",
         [$gid, $year, $month]
     );
-    $totalTeacherLessons = 0;
-    foreach ($teachers as $t) {
-        $totalTeacherLessons += intval($t['lesson_count']);
+    $totalExtTeacherLessons = 0;
+    foreach ($extTeachers as $t) {
+        $totalExtTeacherLessons += intval($t['lesson_count']);
+    }
+    
+    // 按方案计算费用
+    $planFees = [];
+    foreach ($feePlans as $fp) {
+        $unitPrice = floatval($fp['unit_price']);
+        $capPrice = floatval($fp['cap_price']);
+        $fee = 0;
+        if ($totalStudents > 0 && $unitPrice > 0) {
+            $rawFee = $totalStudents * $unitPrice;
+            $fee = $capPrice > 0 ? min($rawFee, $totalStudents * $capPrice) : $rawFee;
+        }
+        $planFees[] = [
+            'plan_name' => $fp['plan_name'],
+            'fee' => $fee
+        ];
     }
     
     $gs['classes'] = $classDetails;
     $gs['total_students'] = $totalStudents;
     $gs['total_lessons'] = $totalLessons;
-    $gs['total_fee'] = $totalFee;
     $gs['teachers'] = $teachers;
-    $gs['total_teacher_lessons'] = $totalTeacherLessons;
+    $gs['total_teacher_hours'] = $totalTeacherHours;
+    $gs['ext_teachers'] = $extTeachers;
+    $gs['total_ext_teacher_lessons'] = $totalExtTeacherLessons;
+    $gs['plan_fees'] = $planFees;
 }
 unset($gs);
 
@@ -130,8 +146,6 @@ adminHeader('统计报表');
     <div class="card-header">
         <h3><?= htmlspecialchars($gs['grade_name']) ?></h3>
         <div style="font-size:13px;color:var(--text-secondary);">
-            单价：¥<?= number_format($unitPrice, 2) ?> | 
-            封顶：¥<?= number_format($capPrice, 2) ?> | 
             节数：<?= $gs['teaching_days'] ?>节
         </div>
     </div>
@@ -147,14 +161,29 @@ adminHeader('统计报表');
             <div class="stat-label">总课时</div>
         </div>
         <div class="stat-card" style="padding:12px;">
-            <div class="stat-value" style="font-size:22px;">¥<?= number_format($gs['total_fee'], 0) ?></div>
-            <div class="stat-label">费用</div>
-        </div>
-        <div class="stat-card" style="padding:12px;">
-            <div class="stat-value" style="font-size:22px;"><?= number_format($gs['total_teacher_lessons']) ?></div>
+            <div class="stat-value" style="font-size:22px;"><?= number_format($gs['total_teacher_hours'], 1) ?></div>
             <div class="stat-label">教师课时</div>
         </div>
+        <div class="stat-card" style="padding:12px;">
+            <div class="stat-value" style="font-size:22px;"><?= number_format($gs['total_ext_teacher_lessons']) ?></div>
+            <div class="stat-label">校外课时</div>
+        </div>
     </div>
+
+    <!-- 多方案费用对照 -->
+    <?php if (!empty($gs['plan_fees'])): ?>
+    <div style="margin-bottom:12px;padding:10px 14px;background:#fefce8;border-radius:10px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">📊 收费方案对照</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;">
+            <?php foreach ($gs['plan_fees'] as $pf): ?>
+            <span style="font-size:13px;background:#fff;padding:4px 12px;border-radius:6px;border:1px solid #e0e0e0;">
+                <?= htmlspecialchars($pf['plan_name']) ?>：
+                <strong style="color:var(--primary);">¥<?= number_format($pf['fee'], 0) ?></strong>
+            </span>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- 班级明细 -->
     <?php if (!empty($gs['classes'])): ?>
@@ -165,7 +194,6 @@ adminHeader('统计报表');
                     <th>班级</th>
                     <th>参与人次</th>
                     <th>总课时数</th>
-                    <th>费用估算</th>
                 </tr>
             </thead>
             <tbody>
@@ -174,7 +202,6 @@ adminHeader('统计报表');
                     <td><?= htmlspecialchars($gs['grade_name']) ?> <?= htmlspecialchars($c['name']) ?></td>
                     <td><?= number_format($c['students']) ?></td>
                     <td><?= number_format($c['lessons'], 1) ?></td>
-                    <td>¥<?= number_format($c['fee'], 0) ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -183,7 +210,6 @@ adminHeader('统计报表');
                     <td><strong>合计</strong></td>
                     <td><?= number_format($gs['total_students']) ?></td>
                     <td><?= number_format($gs['total_lessons'], 1) ?></td>
-                    <td>¥<?= number_format($gs['total_fee'], 0) ?></td>
                 </tr>
             </tfoot>
         </table>
@@ -194,14 +220,34 @@ adminHeader('统计报表');
     </div>
     <?php endif; ?>
 
-    <!-- 校外教师 -->
+    <!-- 上课教师课时 -->
     <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">
-        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">👩‍🏫 校外教师课时</div>
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">👩‍🏫 上课教师课时</div>
         <?php if (!empty($gs['teachers'])): ?>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
             <?php foreach ($gs['teachers'] as $t): ?>
+            <span class="badge badge-primary"><?= htmlspecialchars($t['teacher_name']) ?>：<?= floatval($t['hours']) ?>课时</span>
+            <?php endforeach; ?>
+        </div>
+        <div style="margin-top:6px;font-size:13px;color:var(--text-secondary);">
+            小计：<strong><?= number_format($gs['total_teacher_hours'], 1) ?>课时</strong>
+        </div>
+        <?php else: ?>
+        <span style="font-size:13px;color:var(--text-light);">暂无记录（请在年级页面"发放统计"中填写）</span>
+        <?php endif; ?>
+    </div>
+
+    <!-- 校外教师 -->
+    <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">👩‍🏫 校外教师课时</div>
+        <?php if (!empty($gs['ext_teachers'])): ?>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <?php foreach ($gs['ext_teachers'] as $t): ?>
             <span class="badge badge-warning"><?= htmlspecialchars($t['teacher_name']) ?>：<?= intval($t['lesson_count']) ?>节</span>
             <?php endforeach; ?>
+        </div>
+        <div style="margin-top:6px;font-size:13px;color:var(--text-secondary);">
+            小计：<strong><?= number_format($gs['total_ext_teacher_lessons']) ?>节</strong>
         </div>
         <?php else: ?>
         <span style="font-size:13px;color:var(--text-light);">暂无记录</span>

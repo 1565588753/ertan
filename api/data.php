@@ -40,24 +40,34 @@ switch ($action) {
             [$gradeId, $year, $month]
         );
 
+        // 获取收费方案
+        $feePlans = $db->fetchAll(
+            "SELECT * FROM fee_plans WHERE year = ? AND month = ? ORDER BY sort_order ASC",
+            [$year, $month]
+        );
+
+        // 获取教师课时
+        $teacherHours = $db->fetchAll(
+            "SELECT * FROM teacher_hours WHERE grade_id = ? AND year = ? AND month = ?",
+            [$gradeId, $year, $month]
+        );
+
         echo json_encode([
             'grade_name' => $grade ? $grade['name'] : '',
             'settings' => $setting ?: null,
             'classes' => $classData,
-            'teacher_lessons' => $teachers
+            'teacher_lessons' => $teachers,
+            'fee_plans' => $feePlans,
+            'teacher_hours' => $teacherHours
         ]);
         break;
 
     case 'overview':
-        // 概览数据
         $totalStudents = 0;
         $totalLessons = 0;
-        $totalFees = 0;
         
         $grades = $db->fetchAll("SELECT * FROM grades ORDER BY sort_order");
         foreach ($grades as $g) {
-            $setting = $db->fetchOne("SELECT * FROM grade_settings WHERE grade_id = ? AND year = ? AND month = ?",
-                [$g['id'], $year, $month]);
             $classes = $db->fetchAll("SELECT id FROM classes WHERE grade_id = ?", [$g['id']]);
             
             if (!empty($classes)) {
@@ -68,30 +78,22 @@ switch ($action) {
                 );
                 $students = intval($att[0]['sc'] ?? 0);
                 $lessons = floatval($att[0]['lh'] ?? 0);
-                $fees = 0;
-                
-                if ($students > 0 && $setting) {
-                    $classCounts = $db->fetchAll(
-                        "SELECT class_id, SUM(student_count) as total FROM attendance WHERE class_id IN ({$ids}) AND year = ? AND month = ? GROUP BY class_id",
-                        [$year, $month]
-                    );
-                    foreach ($classCounts as $cc) {
-                        $count = intval($cc['total']);
-                        $raw = $count * floatval($setting['unit_price']);
-                        $fees += min($raw, $count * floatval($setting['cap_price']));
-                    }
-                }
                 
                 $totalStudents += $students;
                 $totalLessons += $lessons;
-                $totalFees += $fees;
             }
         }
+
+        // 获取所有收费方案
+        $feePlans = $db->fetchAll(
+            "SELECT * FROM fee_plans WHERE year = ? AND month = ? ORDER BY sort_order ASC",
+            [$year, $month]
+        );
 
         echo json_encode([
             'total_students' => $totalStudents,
             'total_lessons' => $totalLessons,
-            'total_fees' => $totalFees,
+            'fee_plans' => $feePlans,
             'year' => $year,
             'month' => $month
         ]);
