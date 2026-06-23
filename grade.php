@@ -47,52 +47,63 @@ if ($mode === 'attendance'):
 // 获取班级列表
 $classes = $db->fetchAll("SELECT * FROM classes WHERE grade_id = ? ORDER BY id ASC", [$gradeId]);
 
-// 获取已保存的出勤数据
+// 获取选中的班级ID
+$selectedClassId = isset($_GET['class_id']) ? intval($_GET['class_id']) : 0;
+
+// 获取选中班级信息
+$selectedClass = null;
+if ($selectedClassId > 0) {
+    $selectedClass = $db->fetchOne("SELECT * FROM classes WHERE id = ? AND grade_id = ?", [$selectedClassId, $gradeId]);
+}
+
+// 获取选中班级的出勤数据
 $attendanceData = [];
-if (!empty($classes)) {
-    $classIds = array_column($classes, 'id');
-    $placeholders = implode(',', array_fill(0, count($classIds), '?'));
+if ($selectedClass) {
     $records = $db->fetchAll(
-        "SELECT * FROM attendance WHERE class_id IN ({$placeholders}) AND year = ? AND month = ? ORDER BY class_id, lesson_number",
-        array_merge($classIds, [$year, $month])
+        "SELECT * FROM attendance WHERE class_id = ? AND year = ? AND month = ? ORDER BY lesson_number",
+        [$selectedClassId, $year, $month]
     );
     foreach ($records as $r) {
-        $attendanceData[$r['class_id']][$r['lesson_number']] = $r;
+        $attendanceData[$r['lesson_number']] = $r;
     }
+}
+
+// 获取所有班级的填写状态（用于班级选择页显示）
+$classFillStatus = [];
+foreach ($classes as $c) {
+    $check = $db->fetchOne("SELECT id FROM attendance WHERE class_id = ? AND year = ? AND month = ? LIMIT 1", [$c['id'], $year, $month]);
+    $classFillStatus[$c['id']] = !empty($check);
 }
 
 // 处理提交
 $submitSuccess = false;
 $submitError = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $selectedClassId > 0 && $selectedClass) {
     try {
         $db->getPdo()->beginTransaction();
 
         if (isset($_POST['attendance']) && is_array($_POST['attendance'])) {
-            foreach ($_POST['attendance'] as $classId => $lessons) {
-                $classId = intval($classId);
-                foreach ($lessons as $lessonNum => $studentCount) {
-                    $lessonNum = intval($lessonNum);
-                    $studentCount = intval($studentCount);
-                    if ($studentCount < 0) $studentCount = 0;
-                    $lessonHours = $studentCount;
+            foreach ($_POST['attendance'] as $lessonNum => $studentCount) {
+                $lessonNum = intval($lessonNum);
+                $studentCount = intval($studentCount);
+                if ($studentCount < 0) $studentCount = 0;
+                $lessonHours = $studentCount;
 
-                    $existing = $db->fetchOne(
-                        "SELECT id FROM attendance WHERE class_id = ? AND lesson_number = ? AND year = ? AND month = ?",
-                        [$classId, $lessonNum, $year, $month]
+                $existing = $db->fetchOne(
+                    "SELECT id FROM attendance WHERE class_id = ? AND lesson_number = ? AND year = ? AND month = ?",
+                    [$selectedClassId, $lessonNum, $year, $month]
+                );
+                if ($existing) {
+                    $db->execute(
+                        "UPDATE attendance SET student_count = ?, lesson_hours = ? WHERE id = ?",
+                        [$studentCount, $lessonHours, $existing['id']]
                     );
-                    if ($existing) {
-                        $db->execute(
-                            "UPDATE attendance SET student_count = ?, lesson_hours = ? WHERE id = ?",
-                            [$studentCount, $lessonHours, $existing['id']]
-                        );
-                    } else {
-                        $db->execute(
-                            "INSERT INTO attendance (class_id, lesson_number, student_count, lesson_hours, year, month) VALUES (?, ?, ?, ?, ?, ?)",
-                            [$classId, $lessonNum, $studentCount, $lessonHours, $year, $month]
-                        );
-                    }
+                } else {
+                    $db->execute(
+                        "INSERT INTO attendance (class_id, lesson_number, student_count, lesson_hours, year, month) VALUES (?, ?, ?, ?, ?, ?)",
+                        [$selectedClassId, $lessonNum, $studentCount, $lessonHours, $year, $month]
+                    );
                 }
             }
         }
@@ -128,14 +139,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .save-bar .btn { flex: 1; }
         .toast-success { background: var(--success); }
         .toast-error { background: var(--danger); }
+        .class-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
+        .class-card {
+            background: #fff; border-radius: 16px; padding: 20px 12px; text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06); transition: all 0.2s; cursor: pointer;
+            border: 2px solid transparent; text-decoration: none; display: block; color: var(--text);
+        }
+        .class-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.1); border-color: <?= $gradeColor ?>; }
+        .class-card .class-icon { font-size: 32px; margin-bottom: 8px; }
+        .class-card .class-title { font-size: 16px; font-weight: 700; }
+        .class-card .class-status { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+        .class-card .class-status.has-data { color: var(--success); font-weight: 600; }
     </style>
 </head>
 <body>
 
 <div class="grade-hero">
+    <?php if ($selectedClass): ?>
+    <a href="?g=<?= $gradeId ?>&mode=attendance&year=<?= $year ?>&month=<?= $month ?>" class="back-link">← 返回班级列表</a>
+    <?php else: ?>
     <a href="?g=<?= $gradeId ?>&year=<?= $year ?>&month=<?= $month ?>" class="back-link">← 返回</a>
+    <?php endif; ?>
     <h1>📋 收费统计</h1>
-    <p><?= htmlspecialchars($grade['name']) ?> - <?= $year ?>年<?= $month ?>月 出勤人数填写</p>
+    <p><?= htmlspecialchars($grade['name']) ?> - <?= $year ?>年<?= $month ?>月</p>
     <?php if ($isAdmin): ?>
     <div class="price-info">
         <span>节数：<?= $teachingDays ?>节</span>
@@ -146,10 +172,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="container page-content">
     <!-- 月份切换 -->
     <div class="month-selector">
-        <a href="?g=<?= $gradeId ?>&mode=attendance&year=<?= $prevYear ?>&month=<?= $prevMonth ?>" class="month-nav">◀</a>
+        <?php $classParam = $selectedClass ? '&class_id='.$selectedClassId : ''; ?>
+        <a href="?g=<?= $gradeId ?>&mode=attendance<?= $classParam ?>&year=<?= $prevYear ?>&month=<?= $prevMonth ?>" class="month-nav">◀</a>
         <div class="month-display"><?= $year ?>年 <?= $month ?>月</div>
         <?php if ($nextYear <= CURRENT_YEAR && $nextMonth <= CURRENT_MONTH): ?>
-        <a href="?g=<?= $gradeId ?>&mode=attendance&year=<?= $nextYear ?>&month=<?= $nextMonth ?>" class="month-nav">▶</a>
+        <a href="?g=<?= $gradeId ?>&mode=attendance<?= $classParam ?>&year=<?= $nextYear ?>&month=<?= $nextMonth ?>" class="month-nav">▶</a>
         <?php else: ?>
         <span class="month-nav" style="opacity:0.3">▶</span>
         <?php endif; ?>
@@ -170,38 +197,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p>该年级暂无班级</p>
         <p style="font-size:13px;margin-top:8px;">请联系管理员添加班级</p>
     </div>
-    <?php else: ?>
-
+    <?php elseif (!$selectedClass): ?>
+    <!-- 班级选择页面 -->
     <div class="lesson-count-info">
-        <label>📚 每班课节数：</label>
-        <span class="lesson-badge"><?= $teachingDays ?> 节</span>
+        <label>📚 请选择要填写的班级</label>
+    </div>
+    <div class="class-grid">
+        <?php foreach ($classes as $class): 
+            $hasData = !empty($classFillStatus[$class['id']]);
+        ?>
+        <a href="?g=<?= $gradeId ?>&mode=attendance&year=<?= $year ?>&month=<?= $month ?>&class_id=<?= $class['id'] ?>" class="class-card">
+            <div class="class-icon">🏫</div>
+            <div class="class-title"><?= htmlspecialchars($class['name']) ?></div>
+            <div class="class-status <?= $hasData ? 'has-data' : '' ?>"><?= $hasData ? '✓ 已填写' : '未填写' ?></div>
+        </a>
+        <?php endforeach; ?>
+    </div>
+    <?php else: ?>
+    <!-- 班级出勤填写页面 -->
+    <div class="lesson-count-info">
+        <label>📚 班级：</label>
+        <span class="lesson-badge"><?= htmlspecialchars($grade['name']) ?> <?= htmlspecialchars($selectedClass['name']) ?></span>
+        <span style="margin-left:auto;font-size:14px;color:var(--text-secondary);">共 <?= $teachingDays ?> 节</span>
     </div>
 
     <form method="post">
-        <?php foreach ($classes as $class): ?>
         <div class="attendance-card">
             <div class="class-header">
-                <span class="class-name"><?= htmlspecialchars($grade['name']) ?> <?= htmlspecialchars($class['name']) ?></span>
-                <span class="badge badge-primary" id="total_<?= $class['id'] ?>">合计：0 人</span>
+                <span class="class-name"><?= htmlspecialchars($grade['name']) ?> <?= htmlspecialchars($selectedClass['name']) ?></span>
+                <span class="badge badge-primary" id="total_<?= $selectedClass['id'] ?>">合计：0 人</span>
             </div>
             <div class="class-body">
                 <?php for ($l = 1; $l <= $teachingDays; $l++) {
-                    $saved = isset($attendanceData[$class['id']][$l]) ? $attendanceData[$class['id']][$l] : null;
+                    $saved = isset($attendanceData[$l]) ? $attendanceData[$l] : null;
                     $count = $saved ? intval($saved['student_count']) : 0;
                 ?>
                 <div class="lesson-row">
                     <span class="lesson-label">上<?= $l ?>节</span>
                     <input type="number" class="lesson-input" 
-                           name="attendance[<?= $class['id'] ?>][<?= $l ?>]" 
+                           name="attendance[<?= $l ?>]" 
                            value="<?= $count ?>" min="0" max="999" 
                            placeholder="人数" 
-                           oninput="updateTotal(<?= $class['id'] ?>)" />
+                           oninput="updateTotal(<?= $selectedClass['id'] ?>)" />
                     <span>人</span>
                 </div>
                 <?php } ?>
             </div>
         </div>
-        <?php endforeach; ?>
 
         <div class="save-bar">
             <button type="submit" class="btn btn-primary">💾 保存数据</button>
@@ -212,19 +254,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 function updateTotal(classId) {
-    var inputs = document.querySelectorAll('input[name^="attendance[' + classId + ']"]');
+    var inputs = document.querySelectorAll('input[name^="attendance["]');
     var total = 0;
     inputs.forEach(function(inp) { total += parseInt(inp.value) || 0; });
     var badge = document.getElementById('total_' + classId);
     if (badge) badge.textContent = '合计：' + total + ' 人';
 }
 document.addEventListener('DOMContentLoaded', function() {
-    var classIds = [];
-    document.querySelectorAll('input[name^="attendance["]').forEach(function(inp) {
-        var match = inp.name.match(/attendance\[(\d+)\]/);
-        if (match) { var cid = parseInt(match[1]); if (!classIds.includes(cid)) classIds.push(cid); }
-    });
-    classIds.forEach(function(cid) { updateTotal(cid); });
+    var inputs = document.querySelectorAll('input[name^="attendance["]');
+    if (inputs.length > 0) {
+        updateTotal(<?= $selectedClassId ?>);
+    }
 });
 </script>
 
