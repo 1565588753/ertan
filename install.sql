@@ -77,7 +77,7 @@ CREATE TABLE `attendance` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='上课记录';
 
 -- ============================================
--- 5. 教师课时统计表
+-- 5. 教师课时统计表（校外教师）
 -- ============================================
 DROP TABLE IF EXISTS `teacher_lessons`;
 CREATE TABLE `teacher_lessons` (
@@ -89,6 +89,38 @@ CREATE TABLE `teacher_lessons` (
     `month` INT NOT NULL,
     FOREIGN KEY (`grade_id`) REFERENCES `grades`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='教师课时';
+
+-- ============================================
+-- 5b. 上课教师课时统计表（年级干事填写）
+-- ============================================
+DROP TABLE IF EXISTS `teacher_hours`;
+CREATE TABLE `teacher_hours` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `grade_id` INT NOT NULL,
+    `teacher_name` VARCHAR(50) NOT NULL COMMENT '教师姓名',
+    `hours` DECIMAL(10,1) NOT NULL DEFAULT 0.0 COMMENT '课时数',
+    `year` INT NOT NULL,
+    `month` INT NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`grade_id`) REFERENCES `grades`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='上课教师课时';
+
+-- ============================================
+-- 5c. 收费方案表（多套方案）
+-- ============================================
+DROP TABLE IF EXISTS `fee_plans`;
+CREATE TABLE `fee_plans` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `year` INT NOT NULL,
+    `month` INT NOT NULL,
+    `plan_name` VARCHAR(50) NOT NULL COMMENT '方案名称',
+    `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每节课单价(元)',
+    `cap_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每人封顶价(元)',
+    `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uk_plan_month` (`year`, `month`, `plan_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收费方案';
 
 -- ============================================
 -- 6. 管理员表
