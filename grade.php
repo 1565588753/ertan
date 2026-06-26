@@ -272,72 +272,33 @@ document.addEventListener('DOMContentLoaded', function() {
 </html>
 
 <?php
-// ===== MODE: DISTRIBUTION (发放统计 - 年级干事填教师课时) =====
+// ===== MODE: DISTRIBUTION (发放统计 - 年级干事填年级总课时) =====
 elseif ($mode === 'distribution'):
 
-// 获取已保存的教师课时数据
-$teacherHours = $db->fetchAll(
-    "SELECT * FROM teacher_hours WHERE grade_id = ? AND year = ? AND month = ? ORDER BY id ASC",
-    [$gradeId, $year, $month]
-);
-
-$teacherHoursData = [];
-foreach ($teacherHours as $th) {
-    $teacherHoursData[] = $th;
-}
+// 获取已保存的年级总课时
+$teacherTotalHours = floatval($setting['teacher_total_hours'] ?? 0);
 
 $submitSuccess = false;
 $submitError = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $postedHours = floatval($_POST['teacher_total_hours'] ?? 0);
+    if ($postedHours < 0) $postedHours = 0;
+
     try {
-        $db->getPdo()->beginTransaction();
-
-        // 获取已有的教师ID列表
-        $existingTeachers = $db->fetchAll(
-            "SELECT id FROM teacher_hours WHERE grade_id = ? AND year = ? AND month = ?",
-            [$gradeId, $year, $month]
-        );
-        $processedIds = [];
-
-        if (isset($_POST['teachers']) && is_array($_POST['teachers'])) {
-            foreach ($_POST['teachers'] as $tId => $tData) {
-                $teacherName = trim($tData['name'] ?? '');
-                $hours = floatval($tData['hours'] ?? 0);
-                if ($hours < 0) $hours = 0;
-
-                if (empty($teacherName)) continue;
-
-                if (strpos($tId, 'new_') === 0) {
-                    $db->execute(
-                        "INSERT INTO teacher_hours (grade_id, teacher_name, hours, year, month) VALUES (?, ?, ?, ?, ?)",
-                        [$gradeId, $teacherName, $hours, $year, $month]
-                    );
-                    $processedIds[] = $db->lastInsertId();
-                } else {
-                    $pid = intval($tId);
-                    if ($pid > 0) {
-                        $db->execute(
-                            "UPDATE teacher_hours SET teacher_name = ?, hours = ? WHERE id = ? AND grade_id = ?",
-                            [$teacherName, $hours, $pid, $gradeId]
-                        );
-                        $processedIds[] = $pid;
-                    }
-                }
-            }
+        if ($setting) {
+            $db->execute(
+                "UPDATE grade_settings SET teacher_total_hours = ? WHERE id = ?",
+                [$postedHours, $setting['id']]
+            );
+        } else {
+            $db->execute(
+                "INSERT INTO grade_settings (grade_id, year, month, teaching_days, teacher_total_hours) VALUES (?, ?, ?, 0, ?)",
+                [$gradeId, $year, $month, $postedHours]
+            );
         }
-
-        // 删除已移除的教师记录
-        foreach ($existingTeachers as $et) {
-            if (!in_array($et['id'], $processedIds)) {
-                $db->execute("DELETE FROM teacher_hours WHERE id = ?", [$et['id']]);
-            }
-        }
-
-        $db->getPdo()->commit();
         $submitSuccess = true;
     } catch (Exception $e) {
-        $db->getPdo()->rollBack();
         $submitError = '保存失败：' . $e->getMessage();
     }
 }
@@ -360,8 +321,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .save-bar .btn { flex: 1; }
         .toast-success { background: var(--success); }
         .toast-error { background: var(--danger); }
-        .teacher-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
-        .teacher-row:first-child { padding-top: 0; }
+        .total-input-card { background: #fff; border-radius: 16px; padding: 32px 24px; box-shadow: 0 2px 16px rgba(0,0,0,0.06); text-align: center; max-width: 400px; margin: 20px auto; }
+        .total-input-card .label { font-size: 15px; color: var(--text-secondary); margin-bottom: 12px; }
+        .total-input-card .hint { font-size: 13px; color: #f59e0b; background: #fffbeb; border-radius: 8px; padding: 10px 16px; margin-top: 16px; border-left: 3px solid #f59e0b; text-align: left; }
+        .total-input { width: 200px; text-align: center; font-size: 32px; font-weight: 700; padding: 12px; border: 3px solid #e0e0e0; border-radius: 12px; color: var(--text); }
+        .total-input:focus { border-color: var(--primary); outline: none; }
     </style>
 </head>
 <body>
@@ -369,7 +333,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="grade-hero">
     <a href="?g=<?= $gradeId ?>&year=<?= $year ?>&month=<?= $month ?>" class="back-link">← 返回</a>
     <h1>💰 发放统计</h1>
-    <p><?= htmlspecialchars($grade['name']) ?> - <?= $year ?>年<?= $month ?>月 教师课时填写</p>
+    <p><?= htmlspecialchars($grade['name']) ?> - <?= $year ?>年<?= $month ?>月</p>
 </div>
 
 <div class="container page-content">
@@ -392,60 +356,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script>setTimeout(function(){var t=document.querySelector('.toast');if(t){t.style.transition='opacity 0.5s';t.style.opacity='0';setTimeout(function(){t.remove()},500);}},2000);</script>
     <?php endif; ?>
 
-    <div class="card">
-        <div class="card-header">
-            <h3>👩‍🏫 上课教师课时统计</h3>
-            <span style="font-size:13px;color:var(--text-secondary);">填写本月该年级每位上课教师的课时数</span>
+    <form method="post">
+        <div class="total-input-card">
+            <div class="label">📚 本月 <?= htmlspecialchars($grade['name']) ?> 教师总课时数</div>
+            <input type="number" name="teacher_total_hours" class="total-input"
+                   value="<?= $teacherTotalHours ?>" min="0" step="0.5" placeholder="0">
+            <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;">课时</div>
+            <div class="hint">
+                📌 请填写本年级本月所有上课教师的总课时数，<br><strong>与上交纸质版保持一致</strong>
+            </div>
         </div>
 
-        <form method="post">
-            <div id="teacherContainer">
-                <?php if (empty($teacherHoursData)): ?>
-                <div class="teacher-row" data-index="0">
-                    <input type="text" name="teachers[new_0][name]" value="" placeholder="教师姓名" style="flex:1;min-width:120px;padding:10px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <input type="number" name="teachers[new_0][hours]" value="" min="0" step="0.5" placeholder="课时数" style="width:100px;padding:10px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <span style="font-size:13px;color:#666;">课时</span>
-                    <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.teacher-row').remove()" style="padding:6px 12px;font-size:13px;">✕ 删除</button>
-                </div>
-                <?php else: ?>
-                <?php foreach ($teacherHoursData as $th): ?>
-                <div class="teacher-row" data-index="<?= $th['id'] ?>">
-                    <input type="text" name="teachers[<?= $th['id'] ?>][name]" value="<?= htmlspecialchars($th['teacher_name']) ?>" placeholder="教师姓名" style="flex:1;min-width:120px;padding:10px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <input type="number" name="teachers[<?= $th['id'] ?>][hours]" value="<?= floatval($th['hours']) ?>" min="0" step="0.5" placeholder="课时数" style="width:100px;padding:10px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <span style="font-size:13px;color:#666;">课时</span>
-                    <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.teacher-row').remove()" style="padding:6px 12px;font-size:13px;">✕ 删除</button>
-                </div>
-                <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-            <div style="margin-top:12px;">
-                <button type="button" class="btn btn-outline btn-sm" onclick="addTeacher()">➕ 添加教师</button>
-            </div>
-
-            <div class="save-bar" style="margin-top:20px;position:static;box-shadow:none;padding:12px 0 0;">
-                <button type="submit" class="btn btn-primary">💾 保存数据</button>
-            </div>
-        </form>
-    </div>
+        <div class="save-bar" style="max-width:400px;margin:0 auto;">
+            <button type="submit" class="btn btn-primary">💾 保存数据</button>
+        </div>
+    </form>
 </div>
-
-<script>
-let teacherCounter = <?= max(count($teacherHoursData), 1) ?>;
-function addTeacher() {
-    teacherCounter++;
-    var container = document.getElementById('teacherContainer');
-    var div = document.createElement('div');
-    div.className = 'teacher-row';
-    div.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border);';
-    div.innerHTML = `
-        <input type="text" name="teachers[new_${teacherCounter}][name]" value="" placeholder="教师姓名" style="flex:1;min-width:120px;padding:10px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-        <input type="number" name="teachers[new_${teacherCounter}][hours]" value="" min="0" step="0.5" placeholder="课时数" style="width:100px;padding:10px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-        <span style="font-size:13px;color:#666;">课时</span>
-        <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.teacher-row').remove()" style="padding:6px 12px;font-size:13px;">✕ 删除</button>
-    `;
-    container.appendChild(div);
-}
-</script>
 
 </body>
 </html>
@@ -467,11 +393,7 @@ if (!empty($classes)) {
 }
 
 // 发放统计概况（教师课时数）
-$teacherTotal = $db->fetchAll(
-    "SELECT SUM(hours) as total_hours FROM teacher_hours WHERE grade_id = ? AND year = ? AND month = ?",
-    [$gradeId, $year, $month]
-);
-$totalTeacherHours = floatval($teacherTotal[0]['total_hours'] ?? 0);
+$totalTeacherHours = floatval($setting['teacher_total_hours'] ?? 0);
 
 // 获取收费方案用于显示
 $feePlans = $db->fetchAll(
@@ -600,7 +522,7 @@ $feePlans = $db->fetchAll(
 
     <div style="margin-top:20px;font-size:13px;color:var(--text-light);text-align:center;line-height:1.8;">
         💡 先由班主任填写"收费统计"（出勤人数），<br>
-        再由课时干事填写"发放统计"（教师课时数）
+        再由课时干事填写"发放统计"（总课时需与上交纸质版一致）
     </div>
 </div>
 

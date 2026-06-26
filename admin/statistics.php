@@ -74,15 +74,9 @@ foreach ($gradeStats as &$gs) {
         ];
     }
     
-    // 教师课时数据 (teacher_hours - 上课教师)
-    $teachers = $db->fetchAll(
-        "SELECT * FROM teacher_hours WHERE grade_id = ? AND year = ? AND month = ? ORDER BY id ASC",
-        [$gid, $year, $month]
-    );
-    $totalTeacherHours = 0;
-    foreach ($teachers as $t) {
-        $totalTeacherHours += floatval($t['hours']);
-    }
+    // 教师课时数据 (从 grade_settings 读取)
+    $gs = $db->fetchOne("SELECT teacher_total_hours FROM grade_settings WHERE grade_id = ? AND year = ? AND month = ?", [$gid, $year, $month]);
+    $totalTeacherHours = floatval($gs['teacher_total_hours'] ?? 0);
     
     // 校外教师数据 (teacher_lessons)
     $extTeachers = $db->fetchAll(
@@ -122,7 +116,7 @@ foreach ($gradeStats as &$gs) {
     $gs['classes'] = $classDetails;
     $gs['total_students'] = $totalStudents;
     $gs['total_lessons'] = $totalLessons;
-    $gs['teachers'] = $teachers;
+    $gs['teachers'] = [];
     $gs['total_teacher_hours'] = $totalTeacherHours;
     $gs['ext_teachers'] = $extTeachers;
     $gs['total_ext_teacher_lessons'] = $totalExtTeacherLessons;
@@ -272,17 +266,13 @@ adminHeader('统计报表');
     <!-- 上课教师课时 -->
     <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">
         <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">👩‍🏫 上课教师课时</div>
-        <?php if (!empty($gs['teachers'])): ?>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-            <?php foreach ($gs['teachers'] as $t): ?>
-            <span class="badge badge-primary"><?= htmlspecialchars($t['teacher_name']) ?>：<?= floatval($t['hours']) ?>课时</span>
-            <?php endforeach; ?>
+        <?php if ($gs['total_teacher_hours'] > 0): ?>
+        <div style="font-size:24px;font-weight:700;color:var(--primary);">
+            <?= number_format($gs['total_teacher_hours'], 1) ?> 课时
         </div>
-        <div style="margin-top:6px;font-size:13px;color:var(--text-secondary);">
-            小计：<strong><?= number_format($gs['total_teacher_hours'], 1) ?>课时</strong>
-        </div>
+        <div style="font-size:12px;color:var(--text-light);margin-top:4px;">（由年级干事填写，与上交纸质版一致）</div>
         <?php else: ?>
-        <span style="font-size:13px;color:var(--text-light);">暂无记录（请在年级页面"发放统计"中填写）</span>
+        <span style="font-size:13px;color:var(--text-light);">暂无记录（请在年级页面"发放统计"中填写总课时）</span>
         <?php endif; ?>
     </div>
 

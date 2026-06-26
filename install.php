@@ -55,6 +55,7 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 `year` INT NOT NULL,
                 `month` INT NOT NULL,
                 `teaching_days` INT NOT NULL DEFAULT 0 COMMENT '上课节数',
+                `teacher_total_hours` DECIMAL(10,1) NOT NULL DEFAULT 0 COMMENT '年级总课时(发放统计)',
                 FOREIGN KEY (`grade_id`) REFERENCES `grades`(`id`) ON DELETE CASCADE,
                 UNIQUE KEY `uk_grade_month` (`grade_id`, `year`, `month`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4

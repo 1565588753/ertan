@@ -34,12 +34,9 @@ foreach ($grades as $g) {
         }
     }
     
-    // 获取教师课时 (teacher_hours - 上课教师)
-    $th = $db->fetchOne(
-        "SELECT SUM(hours) as total_hours FROM teacher_hours WHERE grade_id = ? AND year = ? AND month = ?",
-        [$g['id'], $year, $month]
-    );
-    $teacherHours = floatval($th['total_hours'] ?? 0);
+    // 获取教师课时 (从 grade_settings 读取)
+    $gs = $db->fetchOne("SELECT teacher_total_hours FROM grade_settings WHERE grade_id = ? AND year = ? AND month = ?", [$g['id'], $year, $month]);
+    $teacherHours = floatval($gs['teacher_total_hours'] ?? 0);
     
     // 获取校外教师课时
     $ext = $db->fetchOne(
