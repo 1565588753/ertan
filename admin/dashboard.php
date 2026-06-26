@@ -24,6 +24,7 @@ foreach ($grades as $g) {
     
     $students = 0;
     $lessons = 0;
+    $maxStudents = 0; // 各班级最大出勤人数之和（估算实际学生数）
     
     if (!empty($classIds)) {
         $ids = implode(',', $classIds);
@@ -32,6 +33,12 @@ foreach ($grades as $g) {
             $students = intval($att[0]['sc']);
             $lessons = floatval($att[0]['lh']);
         }
+        // 获取各班最大出勤人数（近似实际学生数），用于封顶计算
+        $maxByClass = $db->fetchAll(
+            "SELECT class_id, MAX(student_count) as max_sc FROM attendance WHERE class_id IN ({$ids}) AND year = ? AND month = ? GROUP BY class_id",
+            [$year, $month]
+        );
+        $maxStudents = array_sum(array_column($maxByClass, 'max_sc'));
     }
     
     // 获取教师课时 (从 grade_settings 读取)
@@ -52,6 +59,7 @@ foreach ($grades as $g) {
         'name' => $g['name'],
         'students' => $students,
         'lessons' => $lessons,
+        'max_students' => $maxStudents,
         'teacher_hours' => $teacherHours,
         'ext_teacher_lessons' => $extTeacherLessons
     ];
@@ -101,14 +109,26 @@ foreach ($feePlans as $fp):
     $capPrice = floatval($fp['cap_price']);
     $teacherPayRate = floatval($fp['teacher_pay_rate'] ?? 0);
     
-    // 收入 = 出勤总人次 × 学生单价（按封顶价约束）
+    // 收入 = 按班级逐生计算（单价 × 上课节数，每人不超过封顶价）
     $totalIncome = 0;
+    $incomeCalcRows = []; // 用于明细展示
     foreach ($gradeStats as $gs) {
-        $rawFee = $gs['students'] * $unitPrice;
-        // 封顶约束：每个学生不超过 capPrice，这里的 students 是总人次
-        // 用总人次也算是一种估算方式
-        $fee = $capPrice > 0 ? min($rawFee, $gs['students'] * $capPrice) : $rawFee;
+        $personTimes = $gs['students'];
+        $uniqueStudents = $gs['max_students'] > 0 ? $gs['max_students'] : $personTimes;
+        // 每个学生：min(单价 × 上课节数, 封顶价)
+        // 班级合计 ≈ min(总人次 × 单价, 实际学生数 × 封顶价)
+        $rawTotal = $personTimes * $unitPrice;
+        $capTotal = $uniqueStudents * $capPrice;
+        $fee = ($capPrice > 0 && $uniqueStudents > 0) ? min($rawTotal, $capTotal) : $rawTotal;
         $totalIncome += $fee;
+        $incomeCalcRows[] = [
+            'name' => $gs['name'],
+            'person_times' => $personTimes,
+            'unique_students' => $uniqueStudents,
+            'raw_total' => $rawTotal,
+            'cap_total' => $capTotal,
+            'fee' => $fee
+        ];
     }
     
     // 支出 = 教师总课时 × 教师课时费 + 特殊人员支出
@@ -133,11 +153,25 @@ foreach ($feePlans as $fp):
                 ▶ 计算明细
             </button>
             <div class="calc-detail">
-                <div class="row"><span class="label">出勤总人次</span><span class="value"><?= number_format($totalStudents) ?></span></div>
-                <div class="row"><span class="label">× 学生单价</span><span class="value"><?= number_format($unitPrice, 2) ?>元</span></div>
-                <div class="row"><span class="label">= 原始收入</span><span class="value">¥<?= number_format($totalStudents * $unitPrice, 0) ?></span></div>
-                <div class="row"><span class="label">封顶约束</span><span class="value">每人 ≤ ¥<?= number_format($capPrice, 0) ?></span></div>
-                <div class="row total income"><span class="label">最终收入</span><span class="value">¥<?= number_format($totalIncome, 0) ?></span></div>
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">📐 收费规则（每位学生）</div>
+                <div class="row"><span class="label">应收金额</span><span class="value">单价 × 上课节数</span></div>
+                <div class="row"><span class="label">超过封顶价</span><span class="value">按封顶价 ¥<?= number_format($capPrice, 0) ?> 收取</span></div>
+                <div class="row total" style="margin-bottom:8px;"><span class="label">每位学生</span><span class="value">min(<?= number_format($unitPrice, 2) ?>元/节 × 节数, ¥<?= number_format($capPrice, 0) ?>)</span></div>
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">📊 各年级预估收入</div>
+                <?php foreach ($incomeCalcRows as $cr): ?>
+                <div class="row">
+                    <span class="label"><?= htmlspecialchars($cr['name']) ?></span>
+                    <span class="value" style="font-size:12px;">
+                        <?= number_format($cr['person_times']) ?>人次×¥<?= number_format($unitPrice, 2) ?>
+                        <?php if ($cr['cap_total'] > 0 && $cr['fee'] < $cr['raw_total']): ?>
+                        <span style="color:#ef4444;"> → 封顶 ¥<?= number_format($cr['fee'], 0) ?></span>
+                        <?php else: ?>
+                        = ¥<?= number_format($cr['fee'], 0) ?>
+                        <?php endif; ?>
+                    </span>
+                </div>
+                <?php endforeach; ?>
+                <div class="row total income"><span class="label">全校预计收入</span><span class="value">¥<?= number_format($totalIncome, 0) ?></span></div>
             </div>
         </div>
         <div class="stat-card" style="background:#fef2f2;border-radius:12px;padding:16px;">
@@ -232,8 +266,11 @@ foreach ($feePlans as $fp):
                     $planTotalIncome = 0;
                     $planTotalExpenditure = 0;
                     foreach ($gradeStats as $gs):
-                        $rawFee = $gs['students'] * $unitPrice;
-                        $fee = $capPrice > 0 ? min($rawFee, $gs['students'] * $capPrice) : $rawFee;
+                        $personTimes = $gs['students'];
+                        $uniqueStudents = $gs['max_students'] > 0 ? $gs['max_students'] : $personTimes;
+                        $rawTotal = $personTimes * $unitPrice;
+                        $capTotal = $uniqueStudents * $capPrice;
+                        $fee = ($capPrice > 0 && $uniqueStudents > 0) ? min($rawTotal, $capTotal) : $rawTotal;
                         $teacherTotal = $gs['teacher_hours'] + $gs['ext_teacher_lessons'];
                         $expenditure = $teacherTotal * $teacherPayRate;
                         $gBalance = $fee - $expenditure;
@@ -289,10 +326,13 @@ foreach ($feePlans as $fp):
                 ▶ 查看收入/支出计算规则
             </button>
             <div class="calc-detail" style="text-align:left;">
-                <div class="row"><span class="label">各年级收入</span><span class="value">= 出勤人次 × 单价（≤ 人次×封顶价）</span></div>
-                <div class="row"><span class="label">各年级支出</span><span class="value">= （教师课时+校外课时）× 教师课时费</span></div>
+                <div style="font-weight:600;margin-bottom:4px;">📐 收入（按学生封顶）</div>
+                <div class="row"><span class="label">每位学生</span><span class="value">min(单价×上课节数, 封顶价)</span></div>
+                <div class="row"><span class="label">年级合计</span><span class="value">≈ min(总人次×单价, 实际学生数×封顶价)</span></div>
+                <div style="font-weight:600;margin:8px 0 4px;">📉 支出</div>
+                <div class="row"><span class="label">教师支出</span><span class="value">（教师课时+校外课时）× 教师课时费</span></div>
                 <div class="row"><span class="label">特殊人员支出</span><span class="value">直接累加</span></div>
-                <div class="row total"><span class="label">年级结余</span><span class="value">= 收入 - 支出</span></div>
+                <div class="row total"><span class="label">结余</span><span class="value">= 收入 - 支出</span></div>
             </div>
         </div>
     </div>
@@ -341,7 +381,8 @@ foreach ($feePlans as $fp):
     <div class="card">
         <div class="card-header"><h3>💡 提示</h3></div>
         <div style="font-size:14px;color:var(--text-secondary);line-height:1.8;">
-            <p>• 收入 = 出勤总人次 × 学生单价（按封顶价约束）</p>
+            <p>• 每位学生收费 = min(单价 × 上课节数, 封顶价)，超过封顶价按封顶价收取</p>
+            <p>• 收入 = 各班逐生计算后累加</p>
             <p>• 支出 = 教师课时支出 + 特殊人员（领导/后勤/校医）支出</p>
             <p>• 普通教师课时由年级干事填写，特殊人员在"👤 特殊人员"页面设置</p>
             <p>• 可在"月度设置"中配置多套方案对比</p>

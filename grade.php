@@ -385,11 +385,19 @@ $classes = $db->fetchAll("SELECT * FROM classes WHERE grade_id = ? ORDER BY id A
 
 // 收费统计概况（出勤人数）
 $totalAttendanceStudents = 0;
+$totalMaxStudents = 0; // 各班最大出勤人数之和（估算实际学生数）
 if (!empty($classes)) {
     $classIds = array_column($classes, 'id');
     $ids = implode(',', $classIds);
     $att = $db->fetchAll("SELECT SUM(student_count) as sc FROM attendance WHERE class_id IN ({$ids}) AND year = ? AND month = ?", [$year, $month]);
     $totalAttendanceStudents = intval($att[0]['sc'] ?? 0);
+    
+    // 获取各班最大出勤人数，用于封顶计算
+    $maxByClass = $db->fetchAll(
+        "SELECT class_id, MAX(student_count) as max_sc FROM attendance WHERE class_id IN ({$ids}) AND year = ? AND month = ? GROUP BY class_id",
+        [$year, $month]
+    );
+    $totalMaxStudents = array_sum(array_column($maxByClass, 'max_sc'));
 }
 
 // 发放统计概况（教师课时数）
@@ -485,11 +493,13 @@ if (!empty($feePlans)) {
         <table class="summary-table">
             <?php
             $totalStudents = $totalAttendanceStudents;
+            $uniqueStudents = $totalMaxStudents > 0 ? $totalMaxStudents : $totalStudents;
             foreach ($feePlans as $fp):
                 $unitPrice = floatval($fp['unit_price']);
                 $capPrice = floatval($fp['cap_price']);
-                $estimatedFee = $totalStudents > 0 ? min($totalStudents * $unitPrice, $totalStudents * $capPrice) : 0;
                 $rawIncome = $totalStudents * $unitPrice;
+                $capTotal = $uniqueStudents * $capPrice;
+                $estimatedFee = ($capPrice > 0 && $uniqueStudents > 0) ? min($rawIncome, $capTotal) : $rawIncome;
             ?>
             <tr>
                 <td class="plan-name"><?= htmlspecialchars($fp['plan_name']) ?></td>
@@ -501,6 +511,11 @@ if (!empty($feePlans)) {
                 <td colspan="4" style="padding:0;">
                     <button class="calc-toggle" onclick="toggleCalc(this)">▶ 计算明细</button>
                     <div class="calc-detail">
+                        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">📐 每位学生收费规则</div>
+                        <div class="row"><span class="label">应收</span><span class="value">¥<?= number_format($unitPrice, 2) ?>/节 × 上课节数</span></div>
+                        <div class="row"><span class="label">封顶</span><span class="value">每人每月不超过 ¥<?= number_format($capPrice, 0) ?></span></div>
+                        <div class="row total" style="margin-bottom:8px;"><span class="label">每位学生</span><span class="value">min(<?= number_format($unitPrice, 2) ?>×节数, ¥<?= number_format($capPrice, 0) ?>)</span></div>
+                        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">📊 本年级预估</div>
                         <div class="row">
                             <span class="label">出勤总人次</span>
                             <span class="value"><?= number_format($totalStudents) ?></span>
@@ -513,10 +528,12 @@ if (!empty($feePlans)) {
                             <span class="label">= 原始收入</span>
                             <span class="value">¥<?= number_format($rawIncome, 0) ?></span>
                         </div>
+                        <?php if ($totalMaxStudents > 0 && $capPrice > 0 && $rawIncome > $capTotal): ?>
                         <div class="row">
-                            <span class="label">封顶约束</span>
-                            <span class="value">每人 ≤ ¥<?= number_format($capPrice, 0) ?></span>
+                            <span class="label">🔒 封顶生效</span>
+                            <span class="value" style="color:#ef4444;">≈ <?= number_format($uniqueStudents) ?>人×¥<?= number_format($capPrice, 0) ?></span>
                         </div>
+                        <?php endif; ?>
                         <div class="row total income">
                             <span class="label">最终收入估算</span>
                             <span class="value">¥<?= number_format($estimatedFee, 0) ?></span>
