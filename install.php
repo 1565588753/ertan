@@ -95,6 +95,7 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 `plan_name` VARCHAR(50) NOT NULL COMMENT '方案名称',
                 `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每节课单价(元)',
                 `cap_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每人封顶价(元)',
+                `teacher_pay_rate` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '教师课时费(元)',
                 `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序',
                 UNIQUE KEY `uk_plan` (`year`, `month`, `plan_name`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4

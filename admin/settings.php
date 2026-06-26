@@ -49,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $planName = trim($planData['name'] ?? '');
                 $unitPrice = floatval($planData['unit_price'] ?? 0);
                 $capPrice = floatval($planData['cap_price'] ?? 0);
+                $teacherPayRate = floatval($planData['teacher_pay_rate'] ?? 0);
                 $sortOrder = intval($planData['sort_order'] ?? 0);
 
                 if (empty($planName)) continue;
@@ -57,16 +58,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (strpos($planId, 'new_') === 0) {
                     // 新增方案
                     $db->execute(
-                        "INSERT INTO fee_plans (year, month, plan_name, unit_price, cap_price, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
-                        [$year, $month, $planName, $unitPrice, $capPrice, $sortOrder]
+                        "INSERT INTO fee_plans (year, month, plan_name, unit_price, cap_price, teacher_pay_rate, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        [$year, $month, $planName, $unitPrice, $capPrice, $teacherPayRate, $sortOrder]
                     );
                     $processedIds[] = $db->lastInsertId();
                 } else {
                     $pid = intval($planId);
                     if ($pid > 0) {
                         $db->execute(
-                            "UPDATE fee_plans SET plan_name = ?, unit_price = ?, cap_price = ?, sort_order = ? WHERE id = ? AND year = ? AND month = ?",
-                            [$planName, $unitPrice, $capPrice, $sortOrder, $pid, $year, $month]
+                            "UPDATE fee_plans SET plan_name = ?, unit_price = ?, cap_price = ?, teacher_pay_rate = ?, sort_order = ? WHERE id = ? AND year = ? AND month = ?",
+                            [$planName, $unitPrice, $capPrice, $teacherPayRate, $sortOrder, $pid, $year, $month]
                         );
                         $processedIds[] = $pid;
                     }
@@ -152,23 +153,27 @@ adminHeader('月度参数设置');
                 <?php if (empty($feePlans)): ?>
                 <div class="plan-row" data-index="0" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
                     <input type="text" name="plans[new_0][name]" value="方案A" placeholder="方案名称" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <input type="number" name="plans[new_0][unit_price]" value="13" min="0" step="0.5" placeholder="单价" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <span style="font-size:13px;color:#666;">元/节</span>
-                    <input type="number" name="plans[new_0][cap_price]" value="190" min="0" step="1" placeholder="封顶" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <span style="font-size:13px;color:#666;">元/人封顶</span>
+                    <input type="number" name="plans[new_0][unit_price]" value="13" min="0" step="0.5" placeholder="学生单价" style="width:90px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
+                    <span style="font-size:12px;color:#666;white-space:nowrap;">学生元/节</span>
+                    <input type="number" name="plans[new_0][cap_price]" value="190" min="0" step="1" placeholder="封顶" style="width:80px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
+                    <span style="font-size:12px;color:#666;white-space:nowrap;">封顶元</span>
+                    <input type="number" name="plans[new_0][teacher_pay_rate]" value="50" min="0" step="1" placeholder="教师课时费" style="width:80px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;background:#f0fdf4;">
+                    <span style="font-size:12px;color:#10b981;white-space:nowrap;">教师元/节</span>
                     <input type="hidden" name="plans[new_0][sort_order]" value="1">
-                    <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.plan-row').remove()" style="padding:6px 12px;font-size:13px;">✕ 删除</button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.plan-row').remove()" style="padding:6px 12px;font-size:13px;">✕</button>
                 </div>
                 <?php else: ?>
                 <?php $planIdx = 0; foreach ($feePlans as $fp): $planIdx++; ?>
                 <div class="plan-row" data-index="<?= $fp['id'] ?>" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
                     <input type="text" name="plans[<?= $fp['id'] ?>][name]" value="<?= htmlspecialchars($fp['plan_name']) ?>" placeholder="方案名称" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <input type="number" name="plans[<?= $fp['id'] ?>][unit_price]" value="<?= floatval($fp['unit_price']) ?>" min="0" step="0.5" placeholder="单价" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <span style="font-size:13px;color:#666;">元/节</span>
-                    <input type="number" name="plans[<?= $fp['id'] ?>][cap_price]" value="<?= floatval($fp['cap_price']) ?>" min="0" step="1" placeholder="封顶" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-                    <span style="font-size:13px;color:#666;">元/人封顶</span>
+                    <input type="number" name="plans[<?= $fp['id'] ?>][unit_price]" value="<?= floatval($fp['unit_price']) ?>" min="0" step="0.5" placeholder="学生单价" style="width:90px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
+                    <span style="font-size:12px;color:#666;white-space:nowrap;">学生元/节</span>
+                    <input type="number" name="plans[<?= $fp['id'] ?>][cap_price]" value="<?= floatval($fp['cap_price']) ?>" min="0" step="1" placeholder="封顶" style="width:80px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
+                    <span style="font-size:12px;color:#666;white-space:nowrap;">封顶元</span>
+                    <input type="number" name="plans[<?= $fp['id'] ?>][teacher_pay_rate]" value="<?= floatval($fp['teacher_pay_rate'] ?? 0) ?>" min="0" step="1" placeholder="教师课时费" style="width:80px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;background:#f0fdf4;">
+                    <span style="font-size:12px;color:#10b981;white-space:nowrap;">教师元/节</span>
                     <input type="hidden" name="plans[<?= $fp['id'] ?>][sort_order]" value="<?= $planIdx ?>">
-                    <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.plan-row').remove()" style="padding:6px 12px;font-size:13px;">✕ 删除</button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.plan-row').remove()" style="padding:6px 12px;font-size:13px;">✕</button>
                 </div>
                 <?php endforeach; ?>
                 <?php endif; ?>
@@ -227,12 +232,14 @@ function addPlan() {
     div.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);';
     div.innerHTML = `
         <input type="text" name="plans[new_${planCounter}][name]" value="${name}" placeholder="方案名称" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-        <input type="number" name="plans[new_${planCounter}][unit_price]" value="13" min="0" step="0.5" placeholder="单价" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-        <span style="font-size:13px;color:#666;">元/节</span>
-        <input type="number" name="plans[new_${planCounter}][cap_price]" value="190" min="0" step="1" placeholder="封顶" style="width:100px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
-        <span style="font-size:13px;color:#666;">元/人封顶</span>
+        <input type="number" name="plans[new_${planCounter}][unit_price]" value="13" min="0" step="0.5" placeholder="学生单价" style="width:90px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
+        <span style="font-size:12px;color:#666;white-space:nowrap;">学生元/节</span>
+        <input type="number" name="plans[new_${planCounter}][cap_price]" value="190" min="0" step="1" placeholder="封顶" style="width:80px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;">
+        <span style="font-size:12px;color:#666;white-space:nowrap;">封顶元</span>
+        <input type="number" name="plans[new_${planCounter}][teacher_pay_rate]" value="50" min="0" step="1" placeholder="教师课时费" style="width:80px;padding:8px 10px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px;background:#f0fdf4;">
+        <span style="font-size:12px;color:#10b981;white-space:nowrap;">教师元/节</span>
         <input type="hidden" name="plans[new_${planCounter}][sort_order]" value="${planCounter}">
-        <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.plan-row').remove()" style="padding:6px 12px;font-size:13px;">✕ 删除</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.plan-row').remove()" style="padding:6px 12px;font-size:13px;">✕</button>
     `;
     container.appendChild(div);
 }
@@ -242,8 +249,8 @@ function addPlan() {
     <div style="font-size:14px;color:var(--text-secondary);line-height:1.8;">
         <strong>📌 说明：</strong><br>
         • <strong>上课节数</strong>：该年级本月实际上课节数，同一年级所有班级统一<br>
-        • <strong>收费方案</strong>：可设置多套方案，每套包含单价和封顶价，概览和统计页同时展示<br>
-        • 费用计算方式：人数 × 单价，但每个学生不超过封顶价
+        • <strong>收费方案</strong>：每套方案包含学生收费单价/封顶价 + 教师课时费，以便系统自动计算收支预算<br>
+        • 收入 = 出勤总人次 × 学生单价（按封顶价约束），支出 = 教师总课时 × 教师课时费
     </div>
 </div>
 

@@ -34,12 +34,19 @@ foreach ($grades as $g) {
         }
     }
     
-    // 获取教师课时
+    // 获取教师课时 (teacher_hours - 上课教师)
     $th = $db->fetchOne(
         "SELECT SUM(hours) as total_hours FROM teacher_hours WHERE grade_id = ? AND year = ? AND month = ?",
         [$g['id'], $year, $month]
     );
     $teacherHours = floatval($th['total_hours'] ?? 0);
+    
+    // 获取校外教师课时
+    $ext = $db->fetchOne(
+        "SELECT SUM(lesson_count) as total FROM teacher_lessons WHERE grade_id = ? AND year = ? AND month = ?",
+        [$g['id'], $year, $month]
+    );
+    $extTeacherLessons = intval($ext['total'] ?? 0);
     
     $totalStudents += $students;
     $totalLessons += $lessons;
@@ -48,31 +55,18 @@ foreach ($grades as $g) {
         'name' => $g['name'],
         'students' => $students,
         'lessons' => $lessons,
-        'teacher_hours' => $teacherHours
+        'teacher_hours' => $teacherHours,
+        'ext_teacher_lessons' => $extTeacherLessons
     ];
 }
 
-adminHeader('管理概览');
-?>
+// 计算全校总课时（教师课时 + 校外课时）
+$totalTeacherHours = array_sum(array_column($gradeStats, 'teacher_hours'));
+$totalExtTeacherLessons = array_sum(array_column($gradeStats, 'ext_teacher_lessons'));
+$totalAllTeacherHours = $totalTeacherHours + $totalExtTeacherLessons;
 
-<div class="stat-grid">
-    <div class="stat-card">
-        <div class="stat-value"><?= number_format($totalLessons, 1) ?></div>
-        <div class="stat-label">总课时数</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value"><?= number_format($totalStudents) ?></div>
-        <div class="stat-label">总参与人次</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value"><?= count($grades) ?></div>
-        <div class="stat-label">年级数</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value"><?= count($feePlans) ?></div>
-        <div class="stat-label">收费方案数</div>
-    </div>
-</div>
+adminHeader('预算概览');
+?>
 
 <!-- 月份选择 -->
 <div class="month-selector" style="margin-bottom:20px;">
@@ -87,105 +81,183 @@ adminHeader('管理概览');
     <a href="?year=<?= $ny ?>&month=<?= $nm ?>" class="month-nav">▶</a>
 </div>
 
-<!-- 收费方案对照 -->
-<?php if (!empty($feePlans)): ?>
-<div class="card" style="margin-bottom:16px;background:#fefce8;">
+<!-- ===== 各方案收支预算概览 ===== -->
+<?php if (!empty($feePlans)): 
+$planCards = [];
+foreach ($feePlans as $fp):
+    $unitPrice = floatval($fp['unit_price']);
+    $capPrice = floatval($fp['cap_price']);
+    $teacherPayRate = floatval($fp['teacher_pay_rate'] ?? 0);
+    
+    // 收入 = 出勤总人次 × 学生单价（按封顶价约束）
+    $totalIncome = 0;
+    foreach ($gradeStats as $gs) {
+        $rawFee = $gs['students'] * $unitPrice;
+        // 封顶约束：每个学生不超过 capPrice，这里的 students 是总人次
+        // 用总人次也算是一种估算方式
+        $fee = $capPrice > 0 ? min($rawFee, $gs['students'] * $capPrice) : $rawFee;
+        $totalIncome += $fee;
+    }
+    
+    // 支出 = 教师总课时 × 教师课时费
+    $totalExpenditure = $totalAllTeacherHours * $teacherPayRate;
+    
+    // 结余
+    $balance = $totalIncome - $totalExpenditure;
+?>
+<!-- 方案预算卡片 -->
+<div class="card" style="margin-bottom:16px;border-left:4px solid <?= $balance >= 0 ? '#10b981' : '#ef4444' ?>;">
     <div class="card-header">
-        <h2>📊 收费方案对照</h2>
+        <h2>📊 <?= htmlspecialchars($fp['plan_name']) ?></h2>
+        <span style="font-size:13px;color:var(--text-secondary);">
+            学生 <?= number_format($unitPrice, 2) ?>元/节 · 封顶 <?= number_format($capPrice, 0) ?>元 · 教师 <?= number_format($teacherPayRate, 0) ?>元/节
+        </span>
     </div>
-    <div class="table-responsive">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>方案</th>
-                    <th>单价</th>
-                    <th>封顶价</th>
-                    <?php foreach ($gradeStats as $gs): ?>
-                    <th><?= htmlspecialchars($gs['name']) ?></th>
-                    <?php endforeach; ?>
-                    <th>全校合计</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($feePlans as $fp): 
-                    $unitPrice = floatval($fp['unit_price']);
-                    $capPrice = floatval($fp['cap_price']);
-                    $schoolTotal = 0;
-                ?>
-                <tr>
-                    <td><strong><?= htmlspecialchars($fp['plan_name']) ?></strong></td>
-                    <td>¥<?= number_format($unitPrice, 2) ?></td>
-                    <td>¥<?= number_format($capPrice, 0) ?></td>
-                    <?php 
-                    $schoolTotal = 0;
-                    foreach ($gradeStats as $gs): 
-                        $rawFee = $gs['students'] * $unitPrice;
-                        $fee = $capPrice > 0 ? min($rawFee, $gs['students'] * $capPrice) : $rawFee;
-                        $schoolTotal += $fee;
-                    ?>
-                    <td>¥<?= number_format($fee, 0) ?></td>
-                    <?php endforeach; ?>
-                    <td><strong>¥<?= number_format($schoolTotal, 0) ?></strong></td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div class="stat-card" style="background:#f0f7ff;border-radius:12px;padding:16px;">
+            <div class="stat-label" style="font-size:13px;">💰 预计收入</div>
+            <div class="stat-value" style="font-size:28px;color:#3b82f6;">¥<?= number_format($totalIncome, 0) ?></div>
+        </div>
+        <div class="stat-card" style="background:#fef2f2;border-radius:12px;padding:16px;">
+            <div class="stat-label" style="font-size:13px;">💸 预计支出</div>
+            <div class="stat-value" style="font-size:28px;color:#ef4444;">¥<?= number_format($totalExpenditure, 0) ?></div>
+        </div>
+        <div class="stat-card" style="background:<?= $balance >= 0 ? '#f0fdf4' : '#fef2f2' ?>;border-radius:12px;padding:16px;">
+            <div class="stat-label" style="font-size:13px;">📋 预算结余</div>
+            <div class="stat-value" style="font-size:28px;color:<?= $balance >= 0 ? '#10b981' : '#ef4444' ?>;">
+                ¥<?= number_format($balance, 0) ?>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px;font-size:13px;color:var(--text-secondary);">
+        <span>出勤总人次：<strong><?= number_format($totalStudents) ?></strong></span>
+        <span>教师总课时：<strong><?= number_format($totalAllTeacherHours, 1) ?></strong></span>
+        <span>收费/支出比：<strong><?= $totalExpenditure > 0 ? number_format($totalIncome / $totalExpenditure, 2) : '-' ?></strong></span>
+    </div>
+</div>
+<?php endforeach; ?>
+<?php else: ?>
+<div class="card" style="background:#fefce8;margin-bottom:16px;">
+    <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        <p>暂无收费方案</p>
+        <p style="font-size:13px;margin-top:6px;">请先在"<a href="settings.php">月度设置</a>"中配置收费方案</p>
     </div>
 </div>
 <?php endif; ?>
 
-<!-- 各年级统计 -->
+<!-- ===== 各年级收支明细 ===== -->
 <div class="card">
     <div class="card-header">
-        <h2>各年级统计</h2>
+        <h2>各年级收支明细</h2>
+        <span style="font-size:13px;color:var(--text-secondary);">按方案展示各年级的收入与支出</span>
     </div>
-    <div class="table-responsive">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>年级</th>
-                    <th>参与人次</th>
-                    <th>课时数</th>
-                    <th>教师课时</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($gradeStats as $gs): ?>
-                <tr>
-                    <td><strong><?= htmlspecialchars($gs['name']) ?></strong></td>
-                    <td><?= number_format($gs['students']) ?></td>
-                    <td><?= number_format($gs['lessons'], 1) ?></td>
-                    <td><?= number_format($gs['teacher_hours'], 1) ?></td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-            <tfoot>
-                <tr class="total-row">
-                    <td><strong>合计</strong></td>
-                    <td><?= number_format($totalStudents) ?></td>
-                    <td><?= number_format($totalLessons, 1) ?></td>
-                    <td>-</td>
-                </tr>
-            </tfoot>
-        </table>
+    
+    <?php if (!empty($feePlans)): foreach ($feePlans as $fp):
+        $unitPrice = floatval($fp['unit_price']);
+        $capPrice = floatval($fp['cap_price']);
+        $teacherPayRate = floatval($fp['teacher_pay_rate'] ?? 0);
+    ?>
+    <div style="margin-bottom:20px;">
+        <h3 style="font-size:15px;margin-bottom:8px;padding:8px 0;border-bottom:2px solid var(--primary);">
+            <?= htmlspecialchars($fp['plan_name']) ?>
+        </h3>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>年级</th>
+                        <th>出勤人次</th>
+                        <th>预计收入</th>
+                        <th>教师总课时</th>
+                        <th>课时支出</th>
+                        <th>年级结余</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    $planTotalIncome = 0;
+                    $planTotalExpenditure = 0;
+                    foreach ($gradeStats as $gs):
+                        $rawFee = $gs['students'] * $unitPrice;
+                        $fee = $capPrice > 0 ? min($rawFee, $gs['students'] * $capPrice) : $rawFee;
+                        $teacherTotal = $gs['teacher_hours'] + $gs['ext_teacher_lessons'];
+                        $expenditure = $teacherTotal * $teacherPayRate;
+                        $gBalance = $fee - $expenditure;
+                        $planTotalIncome += $fee;
+                        $planTotalExpenditure += $expenditure;
+                    ?>
+                    <tr>
+                        <td><strong><?= htmlspecialchars($gs['name']) ?></strong></td>
+                        <td><?= number_format($gs['students']) ?></td>
+                        <td style="color:#3b82f6;font-weight:600;">¥<?= number_format($fee, 0) ?></td>
+                        <td><?= number_format($teacherTotal, 1) ?>节</td>
+                        <td style="color:#ef4444;">¥<?= number_format($expenditure, 0) ?></td>
+                        <td style="color:<?= $gBalance >= 0 ? '#10b981' : '#ef4444' ?>;font-weight:600;">
+                            ¥<?= number_format($gBalance, 0) ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td><strong>合计</strong></td>
+                        <td><?= number_format($totalStudents) ?></td>
+                        <td style="color:#3b82f6;font-weight:600;">¥<?= number_format($planTotalIncome, 0) ?></td>
+                        <td><?= number_format($totalAllTeacherHours, 1) ?>节</td>
+                        <td style="color:#ef4444;">¥<?= number_format($planTotalExpenditure, 0) ?></td>
+                        <td style="color:<?= ($planTotalIncome - $planTotalExpenditure) >= 0 ? '#10b981' : '#ef4444' ?>;font-weight:600;">
+                            ¥<?= number_format($planTotalIncome - $planTotalExpenditure, 0) ?>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    <?php endforeach; endif; ?>
+</div>
+
+<!-- ===== 基础数据概览 ===== -->
+<div class="card">
+    <div class="card-header">
+        <h2>📋 基础数据</h2>
+    </div>
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-value"><?= number_format($totalStudents) ?></div>
+            <div class="stat-label">出勤总人次</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value"><?= number_format($totalLessons, 1) ?></div>
+            <div class="stat-label">总课时数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value"><?= number_format($totalTeacherHours, 1) ?></div>
+            <div class="stat-label">上课教师课时</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value"><?= number_format($totalExtTeacherLessons) ?></div>
+            <div class="stat-label">校外教师课时</div>
+        </div>
     </div>
 </div>
 
+<!-- 快捷操作 -->
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;">
     <div class="card">
         <div class="card-header"><h3>快捷操作</h3></div>
         <div style="display:flex;flex-direction:column;gap:10px;">
             <a href="settings.php" class="btn btn-primary btn-sm">⚙️ 月度参数设置</a>
             <a href="classes.php" class="btn btn-accent btn-sm">🏫 班级管理</a>
-            <a href="statistics.php" class="btn btn-outline btn-sm">📈 查看统计报表</a>
+            <a href="statistics.php" class="btn btn-outline btn-sm">📈 查看完整统计报表</a>
         </div>
     </div>
     <div class="card">
-        <div class="card-header"><h3>提示信息</h3></div>
+        <div class="card-header"><h3>💡 提示</h3></div>
         <div style="font-size:14px;color:var(--text-secondary);line-height:1.8;">
-            <p>• 年级干事通过首页选择年级即可填写数据</p>
-            <p>• 请先在"月度设置"中配置各年级参数和收费方案</p>
-            <p>• 在"班级管理"中添加各年级班级</p>
+            <p>• 收入 = 出勤总人次 × 学生单价（按封顶价约束）</p>
+            <p>• 支出 = 教师总课时（上课教师+校外教师）× 教师课时费</p>
+            <p>• 可在"月度设置"中配置多套方案对比</p>
         </div>
     </div>
 </div>

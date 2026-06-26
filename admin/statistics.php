@@ -27,7 +27,11 @@ $sql = "SELECT g.id as grade_id, g.name as grade_name, g.sort_order,
 $gradeStats = $db->fetchAll($sql, [$year, $month]);
 
 // 获取每个年级的详细数据
-$detailData = [];
+$schoolTotalStudents = 0;
+$schoolTotalLessons = 0;
+$schoolTotalTeacherHours = 0;
+$schoolTotalExtTeacherLessons = 0;
+
 foreach ($gradeStats as &$gs) {
     $gid = $gs['grade_id'];
     
@@ -75,19 +79,28 @@ foreach ($gradeStats as &$gs) {
         $totalExtTeacherLessons += intval($t['lesson_count']);
     }
     
-    // 按方案计算费用
-    $planFees = [];
+    // 按方案计算收支
+    $planBudgets = [];
     foreach ($feePlans as $fp) {
         $unitPrice = floatval($fp['unit_price']);
         $capPrice = floatval($fp['cap_price']);
-        $fee = 0;
-        if ($totalStudents > 0 && $unitPrice > 0) {
-            $rawFee = $totalStudents * $unitPrice;
-            $fee = $capPrice > 0 ? min($rawFee, $totalStudents * $capPrice) : $rawFee;
-        }
-        $planFees[] = [
+        $teacherPayRate = floatval($fp['teacher_pay_rate'] ?? 0);
+        
+        $rawFee = $totalStudents * $unitPrice;
+        $income = $capPrice > 0 ? min($rawFee, $totalStudents * $capPrice) : $rawFee;
+        
+        $totalTeacherAll = $totalTeacherHours + $totalExtTeacherLessons;
+        $expenditure = $totalTeacherAll * $teacherPayRate;
+        $balance = $income - $expenditure;
+        
+        $planBudgets[] = [
             'plan_name' => $fp['plan_name'],
-            'fee' => $fee
+            'unit_price' => $unitPrice,
+            'cap_price' => $capPrice,
+            'teacher_pay_rate' => $teacherPayRate,
+            'income' => $income,
+            'expenditure' => $expenditure,
+            'balance' => $balance
         ];
     }
     
@@ -98,7 +111,12 @@ foreach ($gradeStats as &$gs) {
     $gs['total_teacher_hours'] = $totalTeacherHours;
     $gs['ext_teachers'] = $extTeachers;
     $gs['total_ext_teacher_lessons'] = $totalExtTeacherLessons;
-    $gs['plan_fees'] = $planFees;
+    $gs['plan_budgets'] = $planBudgets;
+    
+    $schoolTotalStudents += $totalStudents;
+    $schoolTotalLessons += $totalLessons;
+    $schoolTotalTeacherHours += $totalTeacherHours;
+    $schoolTotalExtTeacherLessons += $totalExtTeacherLessons;
 }
 unset($gs);
 
@@ -150,6 +168,37 @@ adminHeader('统计报表');
         </div>
     </div>
 
+    <!-- 各方案收支对照 -->
+    <?php if (!empty($gs['plan_budgets'])): ?>
+    <div style="margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+            <?php foreach ($gs['plan_budgets'] as $pb): ?>
+            <div style="background:#fff;border-radius:12px;padding:12px 14px;border:1px solid #e0e0e0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+                <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;"><?= htmlspecialchars($pb['plan_name']) ?></div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">
+                    ¥<?= number_format($pb['unit_price'], 2) ?>/节 · 封顶¥<?= number_format($pb['cap_price'], 0) ?>
+                    <br>教师¥<?= number_format($pb['teacher_pay_rate'], 0) ?>/节
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;">
+                    <span style="color:#3b82f6;">收入</span>
+                    <span style="font-weight:600;color:#3b82f6;">¥<?= number_format($pb['income'], 0) ?></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;">
+                    <span style="color:#ef4444;">支出</span>
+                    <span style="font-weight:600;color:#ef4444;">¥<?= number_format($pb['expenditure'], 0) ?></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-top:1px solid #f0f0f0;margin-top:4px;">
+                    <span>结余</span>
+                    <span style="font-weight:700;color:<?= $pb['balance'] >= 0 ? '#10b981' : '#ef4444' ?>;">
+                        ¥<?= number_format($pb['balance'], 0) ?>
+                    </span>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- 概览数据 -->
     <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
         <div class="stat-card" style="padding:12px;">
@@ -169,21 +218,6 @@ adminHeader('统计报表');
             <div class="stat-label">校外课时</div>
         </div>
     </div>
-
-    <!-- 多方案费用对照 -->
-    <?php if (!empty($gs['plan_fees'])): ?>
-    <div style="margin-bottom:12px;padding:10px 14px;background:#fefce8;border-radius:10px;">
-        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">📊 收费方案对照</div>
-        <div style="display:flex;flex-wrap:wrap;gap:12px;">
-            <?php foreach ($gs['plan_fees'] as $pf): ?>
-            <span style="font-size:13px;background:#fff;padding:4px 12px;border-radius:6px;border:1px solid #e0e0e0;">
-                <?= htmlspecialchars($pf['plan_name']) ?>：
-                <strong style="color:var(--primary);">¥<?= number_format($pf['fee'], 0) ?></strong>
-            </span>
-            <?php endforeach; ?>
-        </div>
-    </div>
-    <?php endif; ?>
 
     <!-- 班级明细 -->
     <?php if (!empty($gs['classes'])): ?>

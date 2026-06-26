@@ -44,7 +44,7 @@ function adminHeader($title = '后台管理') {
             📊 管理后台
             <small>v<?= APP_VERSION ?></small>
         </div>
-        <a href="/admin/dashboard.php" class="<?= basename($_SERVER['PHP_SELF']) === 'dashboard.php' ? 'active' : '' ?>">📊 概览</a>
+        <a href="/admin/dashboard.php" class="<?= basename($_SERVER['PHP_SELF']) === 'dashboard.php' ? 'active' : '' ?>">💰 预算概览</a>
         <a href="/admin/settings.php" class="<?= basename($_SERVER['PHP_SELF']) === 'settings.php' ? 'active' : '' ?>">⚙️ 月度设置</a>
         <a href="/admin/classes.php" class="<?= basename($_SERVER['PHP_SELF']) === 'classes.php' ? 'active' : '' ?>">🏫 班级管理</a>
         <a href="/admin/statistics.php" class="<?= basename($_SERVER['PHP_SELF']) === 'statistics.php' ? 'active' : '' ?>">📈 统计报表</a>
