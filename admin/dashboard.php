@@ -129,15 +129,53 @@ foreach ($feePlans as $fp):
         <div class="stat-card" style="background:#f0f7ff;border-radius:12px;padding:16px;">
             <div class="stat-label" style="font-size:13px;">💰 预计收入</div>
             <div class="stat-value" style="font-size:28px;color:#3b82f6;">¥<?= number_format($totalIncome, 0) ?></div>
+            <button class="calc-toggle" onclick="toggleCalc(this)" style="margin-top:6px;">
+                ▶ 计算明细
+            </button>
+            <div class="calc-detail">
+                <div class="row"><span class="label">出勤总人次</span><span class="value"><?= number_format($totalStudents) ?></span></div>
+                <div class="row"><span class="label">× 学生单价</span><span class="value"><?= number_format($unitPrice, 2) ?>元</span></div>
+                <div class="row"><span class="label">= 原始收入</span><span class="value">¥<?= number_format($totalStudents * $unitPrice, 0) ?></span></div>
+                <div class="row"><span class="label">封顶约束</span><span class="value">每人 ≤ ¥<?= number_format($capPrice, 0) ?></span></div>
+                <div class="row total income"><span class="label">最终收入</span><span class="value">¥<?= number_format($totalIncome, 0) ?></span></div>
+            </div>
         </div>
         <div class="stat-card" style="background:#fef2f2;border-radius:12px;padding:16px;">
             <div class="stat-label" style="font-size:13px;">💸 预计支出</div>
             <div class="stat-value" style="font-size:28px;color:#ef4444;">¥<?= number_format($totalExpenditure, 0) ?></div>
+            <button class="calc-toggle" onclick="toggleCalc(this)" style="margin-top:6px;">
+                ▶ 计算明细
+            </button>
+            <div class="calc-detail">
+                <div class="row"><span class="label">普通教师课时</span><span class="value"><?= number_format($totalAllTeacherHours, 1) ?></span></div>
+                <div class="row"><span class="label">× 教师课时费</span><span class="value"><?= number_format($teacherPayRate, 0) ?>元</span></div>
+                <div class="row"><span class="label">= 教师支出</span><span class="value">¥<?= number_format($totalAllTeacherHours * $teacherPayRate, 0) ?></span></div>
+                <?php if (!empty($specialStaffTotal)): ?>
+                <div class="sep"></div>
+                <div style="color:var(--text-secondary);padding:2px 0;">+ 特殊人员支出</div>
+                <?php foreach ($specialStaffTotal as $type => $ssd): ?>
+                <div class="row"><span class="label">&nbsp;&nbsp;<?= $type ?></span><span class="value">¥<?= number_format($ssd['expenditure'], 0) ?></span></div>
+                <?php endforeach; ?>
+                <?php endif; ?>
+                <div class="sep"></div>
+                <div class="row total"><span class="label">总支出</span><span class="value">¥<?= number_format($totalExpenditure, 0) ?></span></div>
+            </div>
         </div>
         <div class="stat-card" style="background:<?= $balance >= 0 ? '#f0fdf4' : '#fef2f2' ?>;border-radius:12px;padding:16px;">
             <div class="stat-label" style="font-size:13px;">📋 预算结余</div>
             <div class="stat-value" style="font-size:28px;color:<?= $balance >= 0 ? '#10b981' : '#ef4444' ?>;">
                 ¥<?= number_format($balance, 0) ?>
+            </div>
+            <button class="calc-toggle" onclick="toggleCalc(this)" style="margin-top:6px;">
+                ▶ 计算明细
+            </button>
+            <div class="calc-detail">
+                <div class="row"><span class="label">收入</span><span class="value">¥<?= number_format($totalIncome, 0) ?></span></div>
+                <div class="row"><span class="label">- 支出</span><span class="value">¥<?= number_format($totalExpenditure, 0) ?></span></div>
+                <div class="row total <?= $balance >= 0 ? 'income' : '' ?>">
+                    <span class="label">= 结余</span>
+                    <span class="value" style="color:<?= $balance >= 0 ? '#10b981' : '#ef4444' ?>;">¥<?= number_format($balance, 0) ?></span>
+                </div>
             </div>
         </div>
     </div>
@@ -246,6 +284,17 @@ foreach ($feePlans as $fp):
                 </tfoot>
             </table>
         </div>
+        <div style="margin-top:8px;text-align:right;">
+            <button class="calc-toggle" onclick="toggleCalc(this)">
+                ▶ 查看收入/支出计算规则
+            </button>
+            <div class="calc-detail" style="text-align:left;">
+                <div class="row"><span class="label">各年级收入</span><span class="value">= 出勤人次 × 单价（≤ 人次×封顶价）</span></div>
+                <div class="row"><span class="label">各年级支出</span><span class="value">= （教师课时+校外课时）× 教师课时费</span></div>
+                <div class="row"><span class="label">特殊人员支出</span><span class="value">直接累加</span></div>
+                <div class="row total"><span class="label">年级结余</span><span class="value">= 收入 - 支出</span></div>
+            </div>
+        </div>
     </div>
     <?php endforeach; endif; ?>
 </div>
@@ -300,4 +349,12 @@ foreach ($feePlans as $fp):
     </div>
 </div>
 
+<script>
+function toggleCalc(btn) {
+    btn.classList.toggle('open');
+    var detail = btn.nextElementSibling;
+    if (detail) detail.classList.toggle('open');
+    btn.innerHTML = btn.classList.contains('open') ? '▼ 收起明细' : '▶ 计算明细';
+}
+</script>
 <?php adminFooter(); ?>

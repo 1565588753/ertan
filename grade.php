@@ -400,6 +400,23 @@ $feePlans = $db->fetchAll(
     "SELECT * FROM fee_plans WHERE year = ? AND month = ? ORDER BY sort_order ASC, id ASC",
     [$year, $month]
 );
+
+// 计算特殊人员支出
+$specialStaffList = $isAdmin ? $db->fetchAll(
+    "SELECT * FROM special_staff WHERE year = ? AND month = ?",
+    [$year, $month]
+) : [];
+$totalSpecialStaffExpenditure = 0;
+foreach ($specialStaffList as $ss) {
+    $hours = floatval($ss['total_hours'] ?? 0);
+    $price = floatval($ss['unit_price'] ?? 0);
+    $totalSpecialStaffExpenditure += $hours * $price;
+}
+// 取第一个方案的教师课时单价作为参考
+$teacherPayRate = 0;
+if (!empty($feePlans)) {
+    $teacherPayRate = floatval($feePlans[0]['teacher_pay_rate'] ?? 0);
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -472,12 +489,40 @@ $feePlans = $db->fetchAll(
                 $unitPrice = floatval($fp['unit_price']);
                 $capPrice = floatval($fp['cap_price']);
                 $estimatedFee = $totalStudents > 0 ? min($totalStudents * $unitPrice, $totalStudents * $capPrice) : 0;
+                $rawIncome = $totalStudents * $unitPrice;
             ?>
             <tr>
                 <td class="plan-name"><?= htmlspecialchars($fp['plan_name']) ?></td>
                 <td class="plan-value">¥<?= number_format($unitPrice, 2) ?>/节</td>
                 <td class="plan-value">封顶 ¥<?= number_format($capPrice, 0) ?></td>
                 <td class="plan-value">估算 ¥<?= number_format($estimatedFee, 0) ?></td>
+            </tr>
+            <tr>
+                <td colspan="4" style="padding:0;">
+                    <button class="calc-toggle" onclick="toggleCalc(this)">▶ 计算明细</button>
+                    <div class="calc-detail">
+                        <div class="row">
+                            <span class="label">出勤总人次</span>
+                            <span class="value"><?= number_format($totalStudents) ?></span>
+                        </div>
+                        <div class="row">
+                            <span class="label">× 学生单价</span>
+                            <span class="value">¥<?= number_format($unitPrice, 2) ?></span>
+                        </div>
+                        <div class="row">
+                            <span class="label">= 原始收入</span>
+                            <span class="value">¥<?= number_format($rawIncome, 0) ?></span>
+                        </div>
+                        <div class="row">
+                            <span class="label">封顶约束</span>
+                            <span class="value">每人 ≤ ¥<?= number_format($capPrice, 0) ?></span>
+                        </div>
+                        <div class="row total income">
+                            <span class="label">最终收入估算</span>
+                            <span class="value">¥<?= number_format($estimatedFee, 0) ?></span>
+                        </div>
+                    </div>
+                </td>
             </tr>
             <?php endforeach; ?>
         </table>
@@ -486,6 +531,10 @@ $feePlans = $db->fetchAll(
 
     <!-- 教师发放总课时（仅管理员可见） -->
     <?php if ($isAdmin): ?>
+    <?php
+    $teacherExpenditure = $totalTeacherHours * $teacherPayRate;
+    $totalExpenditure = $teacherExpenditure + $totalSpecialStaffExpenditure;
+    ?>
     <div class="summary-box">
         <h3>👩‍🏫 教师发放统计</h3>
         <table class="summary-table">
@@ -497,6 +546,46 @@ $feePlans = $db->fetchAll(
                 <td>出勤总人次</td>
                 <td class="plan-value"><?= number_format($totalAttendanceStudents) ?> 人次</td>
             </tr>
+            <?php if ($teacherPayRate > 0 || $totalSpecialStaffExpenditure > 0): ?>
+            <tr>
+                <td colspan="2" style="padding:0;">
+                    <button class="calc-toggle" onclick="toggleCalc(this)">▶ 支出明细</button>
+                    <div class="calc-detail">
+                        <?php if ($teacherPayRate > 0): ?>
+                        <div class="row">
+                            <span class="label">教师总课时</span>
+                            <span class="value"><?= number_format($totalTeacherHours, 1) ?> 课时</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">× 教师课时单价</span>
+                            <span class="value">¥<?= number_format($teacherPayRate, 2) ?></span>
+                        </div>
+                        <div class="row">
+                            <span class="label">= 教师支出</span>
+                            <span class="value">¥<?= number_format($teacherExpenditure, 0) ?></span>
+                        </div>
+                        <?php endif; ?>
+                        <?php if (!empty($specialStaffList)): ?>
+                        <div style="margin-top:6px;font-weight:600;color:var(--text-secondary);font-size:12px;">特殊人员支出</div>
+                        <?php foreach ($specialStaffList as $ss):
+                            $hours = floatval($ss['total_hours'] ?? 0);
+                            $price = floatval($ss['unit_price'] ?? 0);
+                            $subtotal = $hours * $price;
+                        ?>
+                        <div class="row">
+                            <span class="label"><?= htmlspecialchars($ss['staff_type']) ?></span>
+                            <span class="value"><?= number_format($hours, 1) ?>h × ¥<?= number_format($price, 2) ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
+                        <div class="row total">
+                            <span class="label">总支出</span>
+                            <span class="value">¥<?= number_format($totalExpenditure, 0) ?></span>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            <?php endif; ?>
         </table>
     </div>
     <?php endif; ?>
@@ -525,6 +614,15 @@ $feePlans = $db->fetchAll(
         再由课时干事填写"发放统计"（总课时需与上交纸质版一致）
     </div>
 </div>
+
+<script>
+function toggleCalc(btn) {
+    btn.classList.toggle('open');
+    var detail = btn.nextElementSibling;
+    if (detail) detail.classList.toggle('open');
+    btn.innerHTML = btn.classList.contains('open') ? '▼ 收起明细' : '▶ 计算明细';
+}
+</script>
 
 </body>
 </html>

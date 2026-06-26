@@ -792,6 +792,49 @@ textarea.form-control { min-height: 80px; resize: vertical; }
     transition: all 0.3s;
 }
 
+/* === Calculation Detail Toggle === */
+.calc-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--primary-light);
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: var(--font);
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+.calc-toggle:hover { background: #e8f0fe; }
+.calc-toggle .arrow { transition: transform 0.25s; display: inline-block; }
+.calc-toggle.open .arrow { transform: rotate(90deg); }
+.calc-detail {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.8;
+    border: 1px solid #eef2f6;
+    display: none;
+    overflow: hidden;
+}
+.calc-detail.open { display: block; animation: fadeIn 0.25s ease; }
+.calc-detail .row { display: flex; justify-content: space-between; align-items: center; padding: 2px 0; }
+.calc-detail .row .label { color: var(--text-secondary); }
+.calc-detail .row .value { font-weight: 600; color: var(--text); }
+.calc-detail .row.total { border-top: 1px dashed var(--border); margin-top: 4px; padding-top: 6px; }
+.calc-detail .row.total .value { font-size: 15px; color: var(--danger); }
+.calc-detail .row.total.income .value { color: var(--success); }
+.calc-detail .sep { border-top: 1px dashed var(--border); margin: 4px 0; }
+
+@keyframes fadeIn {
+    from { opacity: 0; max-height: 0; }
+    to { opacity: 1; max-height: 500px; }
+}
+
 /* === ===== Responsive ===== === */
 @media (max-width: 768px) {
     .grade-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }

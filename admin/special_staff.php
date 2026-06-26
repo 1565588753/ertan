@@ -125,6 +125,21 @@ adminHeader('特殊人员设置');
                     <div style="padding:8px 12px;background:#f0fdf4;border-radius:8px;font-size:14px;">
                         <span style="color:var(--text-secondary);">小计支出：</span>
                         <strong style="color:#ef4444;">¥<?= number_format($expenditure, 0) ?></strong>
+                        <button class="calc-toggle" onclick="toggleCalc(this)" style="font-size:12px;margin-left:8px;">▶ 明细</button>
+                        <div class="calc-detail" style="margin-top:6px;">
+                            <div class="row">
+                                <span class="label">总课时</span>
+                                <span class="value"><?= number_format(floatval($sd['total_hours']), 1) ?> h</span>
+                            </div>
+                            <div class="row">
+                                <span class="label">× 课时单价</span>
+                                <span class="value">¥<?= number_format(floatval($sd['unit_price']), 2) ?></span>
+                            </div>
+                            <div class="row total">
+                                <span class="label">小计</span>
+                                <span class="value">¥<?= number_format($expenditure, 0) ?></span>
+                            </div>
+                        </div>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -146,5 +161,14 @@ adminHeader('特殊人员设置');
         • 特殊人员支出 = 总课时 × 单价，自动计入每月预算
     </div>
 </div>
+
+<script>
+function toggleCalc(btn) {
+    btn.classList.toggle('open');
+    var detail = btn.nextElementSibling;
+    if (detail) detail.classList.toggle('open');
+    btn.innerHTML = btn.classList.contains('open') ? '▼ 收起' : '▶ 明细';
+}
+</script>
 
 <?php adminFooter(); ?>
