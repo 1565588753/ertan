@@ -57,28 +57,32 @@ foreach ($gradeStats as &$gs) {
     $totalLessons = 0;
     
     foreach ($classes as $c) {
-        $atts = $db->fetchAll(
-            "SELECT SUM(student_count) as sc, SUM(lesson_hours) as lh FROM attendance WHERE class_id = ? AND year = ? AND month = ?",
+        // 正确逻辑：lesson_number = X节 → 有多少学生本月上了X节课
+        $att = $db->fetchAll(
+            "SELECT lesson_number, student_count 
+             FROM attendance WHERE class_id = ? AND year = ? AND month = ?",
             [$c['id'], $year, $month]
         );
-        $sc = intval($atts[0]['sc'] ?? 0);
-        $lh = floatval($atts[0]['lh'] ?? 0);
+        $ts = 0; // 总学生数 = Σ(各组人数)
+        $tl = 0; // 总课时 = Σ(人数 × 节数)
+        $attendanceGroups = [];
+        foreach ($att as $row) {
+            $ts += intval($row['student_count']);
+            $tl += intval($row['student_count']) * intval($row['lesson_number']);
+            $attendanceGroups[] = [
+                'lesson_number' => intval($row['lesson_number']),
+                'student_count' => intval($row['student_count'])
+            ];
+        }
         
-        $totalStudents += $sc;
-        $totalLessons += $lh;
-        
-        // 获取该班最大出勤人数（近似实际学生数），用于封顶计算
-        $maxAtt = $db->fetchOne(
-            "SELECT MAX(student_count) as max_sc FROM attendance WHERE class_id = ? AND year = ? AND month = ?",
-            [$c['id'], $year, $month]
-        );
-        $maxSc = intval($maxAtt['max_sc'] ?? 0);
+        $totalStudents += $ts;
+        $totalLessons += $tl;
         
         $classDetails[] = [
             'name' => $c['name'],
-            'students' => $sc,
-            'lessons' => $lh,
-            'max_students' => $maxSc
+            'students' => $ts,
+            'lessons' => $tl,
+            'attendance_groups' => $attendanceGroups
         ];
     }
     
@@ -103,12 +107,11 @@ foreach ($gradeStats as &$gs) {
         $capPrice = floatval($fp['cap_price']);
         $teacherPayRate = floatval($fp['teacher_pay_rate'] ?? 0);
         
-        // 按学生封顶计算：每位学生 min(单价×节数, 封顶价)
-        $personTimes = $totalStudents;
-        $uniqueStudents = $gs['total_max_students'] > 0 ? $gs['total_max_students'] : $personTimes;
-        $rawTotal = $personTimes * $unitPrice;
-        $capTotal = $uniqueStudents * $capPrice;
-        $income = ($capPrice > 0 && $uniqueStudents > 0) ? min($rawTotal, $capTotal) : $rawTotal;
+        // 按分组逐生计算：每组收费 = 人数 × min(节数×单价, 封顶价)
+        $income = 0;
+        foreach ($allGroups as $ag) {
+            $income += $ag['student_count'] * min($ag['lesson_number'] * $unitPrice, $capPrice);
+        }
         
         $totalTeacherAll = $totalTeacherHours + $totalExtTeacherLessons;
         $expenditure = $totalTeacherAll * $teacherPayRate + $totalSpecialExpenditure;
@@ -128,7 +131,18 @@ foreach ($gradeStats as &$gs) {
     $gs['classes'] = $classDetails;
     $gs['total_students'] = $totalStudents;
     $gs['total_lessons'] = $totalLessons;
-    $gs['total_max_students'] = array_sum(array_column($classDetails, 'max_students')); // 各班最大出勤人数之和
+    // 汇总所有班级的所有分组
+    $allGroups = [];
+    foreach ($classDetails as $cd) {
+        foreach ($cd['attendance_groups'] as $ag) {
+            $allGroups[] = [
+                'class_name' => $cd['name'],
+                'lesson_number' => $ag['lesson_number'],
+                'student_count' => $ag['student_count']
+            ];
+        }
+    }
+    $gs['all_attendance_groups'] = $allGroups;
     $gs['teachers'] = [];
     $gs['total_teacher_hours'] = $totalTeacherHours;
     $gs['ext_teachers'] = $extTeachers;
@@ -219,23 +233,36 @@ adminHeader('统计报表');
                     ▶ 明细
                 </button>
                 <div class="calc-detail">
-                    <div style="font-weight:600;color:var(--text);margin-bottom:4px;">📐 收费规则（每位学生）</div>
-                    <div class="row"><span class="label">应收</span><span class="value">¥<?= number_format($pb['unit_price'], 2) ?>/节 × 上课节数</span></div>
-                    <div class="row"><span class="label">封顶</span><span class="value">每人 ≤ ¥<?= number_format($pb['cap_price'], 0) ?></span></div>
-                    <div class="row total income" style="margin-bottom:6px;"><span class="label">每位学生</span><span class="value">min(<?= number_format($pb['unit_price'], 2) ?>×节数, ¥<?= number_format($pb['cap_price'], 0) ?>)</span></div>
-                    <div style="font-weight:600;color:var(--text);margin-bottom:4px;">📊 本年级估算</div>
-                    <div class="row"><span class="label">出勤人次</span><span class="value"><?= number_format($gs['total_students']) ?></span></div>
-                    <div class="row"><span class="label">× 单价</span><span class="value">¥<?= number_format($pb['unit_price'], 2) ?></span></div>
-                    <div class="row"><span class="label">= 原始收入</span><span class="value">¥<?= number_format($gs['total_students'] * $pb['unit_price'], 0) ?></span></div>
-                    <?php 
-                    $pt = $gs['total_students'];
-                    $us = $gs['total_max_students'] > 0 ? $gs['total_max_students'] : $pt;
-                    $hitCap = ($pb['cap_price'] > 0 && $us > 0 && ($pt * $pb['unit_price']) > ($us * $pb['cap_price']));
+                    <div style="font-weight:600;color:var(--text);margin-bottom:4px;">📐 分组收费规则</div>
+                    <div class="row"><span class="label">每组收费</span><span class="value">人数 × min(节数×单价, 封顶价)</span></div>
+                    <div class="row total" style="margin-bottom:6px;"><span class="label">总收入</span><span class="value">Σ 所有分组</span></div>
+                    
+                    <div style="font-weight:600;color:var(--text);margin-bottom:4px;">📊 详细计算</div>
+                    <?php $hasDetail = false; ?>
+                    <?php foreach ($gs['all_attendance_groups'] as $ag): 
+                        $ps = $ag['student_count'] * min($ag['lesson_number'] * $pb['unit_price'], $pb['cap_price']);
+                        $capped = min($ag['lesson_number'] * $pb['unit_price'], $pb['cap_price']);
+                        $hasDetail = true;
                     ?>
-                    <?php if ($hitCap): ?>
-                    <div class="row"><span class="label">🔒 封顶生效</span><span class="value" style="color:#ef4444;">≈ <?= number_format($us) ?>人 × ¥<?= number_format($pb['cap_price'], 0) ?></span></div>
+                    <div class="row" style="font-size:12px;">
+                        <span class="label"><?= $ag['class_name'] ?> 上<?= $ag['lesson_number'] ?>节 × <?= $ag['student_count'] ?>人</span>
+                        <span class="value">
+                            <?php if ($capped < $ag['lesson_number'] * $pb['unit_price']): ?>
+                                = <?= $ag['student_count'] ?> × ¥<?= number_format($capped, 2) ?> = ¥<?= number_format($ps, 0) ?> <span style="color:#ef4444;">(封顶)</span>
+                            <?php else: ?>
+                                = <?= $ag['student_count'] ?> × ¥<?= number_format($capped, 2) ?> = ¥<?= number_format($ps, 0) ?>
+                            <?php endif; ?>
+                        </span>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if (!$hasDetail): ?>
+                    <div class="row"><span class="label" style="color:var(--text-light);">暂无出勤数据</span></div>
                     <?php endif; ?>
-                    <div class="row total income"><span class="label">预估收入</span><span class="value">¥<?= number_format($pb['income'], 0) ?></span></div>
+                    
+                    <div class="row total income" style="margin-top:4px;">
+                        <span class="label">预估收入</span>
+                        <span class="value">¥<?= number_format($pb['income'], 0) ?></span>
+                    </div>
                     <div style="font-weight:600;color:var(--text);margin-top:8px;margin-bottom:4px;">📉 支出</div>
                     <div class="row"><span class="label">教师总课时</span><span class="value"><?= number_format($gs['total_teacher_hours'] + $gs['total_ext_teacher_lessons'], 1) ?></span></div>
                     <div class="row"><span class="label">× 教师课时费</span><span class="value">¥<?= number_format($pb['teacher_pay_rate'], 0) ?></span></div>
@@ -256,7 +283,7 @@ adminHeader('统计报表');
     <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
         <div class="stat-card" style="padding:12px;">
             <div class="stat-value" style="font-size:22px;"><?= number_format($gs['total_students']) ?></div>
-            <div class="stat-label">总人次</div>
+            <div class="stat-label">学生总人数</div>
         </div>
         <div class="stat-card" style="padding:12px;">
             <div class="stat-value" style="font-size:22px;"><?= number_format($gs['total_lessons'], 1) ?></div>
@@ -279,7 +306,7 @@ adminHeader('统计报表');
             <thead>
                 <tr>
                     <th>班级</th>
-                    <th>参与人次</th>
+                    <th>学生人数</th>
                     <th>总课时数</th>
                 </tr>
             </thead>
