@@ -32,6 +32,21 @@ $schoolTotalLessons = 0;
 $schoolTotalTeacherHours = 0;
 $schoolTotalExtTeacherLessons = 0;
 
+// 获取特殊人员数据
+$specialStaffList = $db->fetchAll(
+    "SELECT * FROM special_staff WHERE year = ? AND month = ? ORDER BY FIELD(staff_type, '领导','后勤','校医')",
+    [$year, $month]
+);
+$specialStaffTotal = [];
+foreach ($specialStaffList as $ss) {
+    $specialStaffTotal[$ss['staff_type']] = [
+        'hours' => floatval($ss['total_hours']),
+        'unit_price' => floatval($ss['unit_price']),
+        'expenditure' => floatval($ss['total_hours']) * floatval($ss['unit_price'])
+    ];
+}
+$totalSpecialExpenditure = array_sum(array_column($specialStaffTotal, 'expenditure'));
+
 foreach ($gradeStats as &$gs) {
     $gid = $gs['grade_id'];
     
@@ -90,7 +105,7 @@ foreach ($gradeStats as &$gs) {
         $income = $capPrice > 0 ? min($rawFee, $totalStudents * $capPrice) : $rawFee;
         
         $totalTeacherAll = $totalTeacherHours + $totalExtTeacherLessons;
-        $expenditure = $totalTeacherAll * $teacherPayRate;
+        $expenditure = $totalTeacherAll * $teacherPayRate + $totalSpecialExpenditure;
         $balance = $income - $expenditure;
         
         $planBudgets[] = [

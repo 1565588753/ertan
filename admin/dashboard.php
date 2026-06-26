@@ -65,6 +65,21 @@ $totalTeacherHours = array_sum(array_column($gradeStats, 'teacher_hours'));
 $totalExtTeacherLessons = array_sum(array_column($gradeStats, 'ext_teacher_lessons'));
 $totalAllTeacherHours = $totalTeacherHours + $totalExtTeacherLessons;
 
+// 获取特殊人员数据（领导/后勤/校医）
+$specialStaffList = $db->fetchAll(
+    "SELECT * FROM special_staff WHERE year = ? AND month = ? ORDER BY FIELD(staff_type, '领导','后勤','校医')",
+    [$year, $month]
+);
+$specialStaffTotal = [];
+foreach ($specialStaffList as $ss) {
+    $specialStaffTotal[$ss['staff_type']] = [
+        'hours' => floatval($ss['total_hours']),
+        'unit_price' => floatval($ss['unit_price']),
+        'expenditure' => floatval($ss['total_hours']) * floatval($ss['unit_price'])
+    ];
+}
+$totalSpecialExpenditure = array_sum(array_column($specialStaffTotal, 'expenditure'));
+
 adminHeader('预算概览');
 ?>
 
@@ -99,8 +114,8 @@ foreach ($feePlans as $fp):
         $totalIncome += $fee;
     }
     
-    // 支出 = 教师总课时 × 教师课时费
-    $totalExpenditure = $totalAllTeacherHours * $teacherPayRate;
+    // 支出 = 教师总课时 × 教师课时费 + 特殊人员支出
+    $totalExpenditure = $totalAllTeacherHours * $teacherPayRate + $totalSpecialExpenditure;
     
     // 结余
     $balance = $totalIncome - $totalExpenditure;
@@ -129,10 +144,13 @@ foreach ($feePlans as $fp):
             </div>
         </div>
     </div>
-    <div style="display:flex;gap:10px;margin-top:12px;font-size:13px;color:var(--text-secondary);">
-        <span>出勤总人次：<strong><?= number_format($totalStudents) ?></strong></span>
-        <span>教师总课时：<strong><?= number_format($totalAllTeacherHours, 1) ?></strong></span>
-        <span>收费/支出比：<strong><?= $totalExpenditure > 0 ? number_format($totalIncome / $totalExpenditure, 2) : '-' ?></strong></span>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:13px;color:var(--text-secondary);">
+        <span>出勤：<strong><?= number_format($totalStudents) ?></strong>人次</span>
+        <span>教师课时：<strong><?= number_format($totalAllTeacherHours, 1) ?></strong></span>
+        <?php foreach ($specialStaffTotal as $type => $ssd): ?>
+        <span><?= $type ?>：<strong><?= number_format($ssd['hours'], 1) ?></strong>课时 · ¥<?= number_format($ssd['expenditure'], 0) ?></span>
+        <?php endforeach; ?>
+        <span>收支比：<strong><?= $totalExpenditure > 0 ? number_format($totalIncome / $totalExpenditure, 2) : '-' ?></strong></span>
     </div>
 </div>
 <?php endforeach; ?>
@@ -198,6 +216,24 @@ foreach ($feePlans as $fp):
                         </td>
                     </tr>
                     <?php endforeach; ?>
+                    <?php if (!empty($specialStaffTotal)): ?>
+                    <tr style="background:#fefce8;">
+                        <td><strong>👤 特殊人员</strong></td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>
+                            <?php 
+                            $parts = [];
+                            foreach ($specialStaffTotal as $type => $ssd) {
+                                $parts[] = $type . ':' . number_format($ssd['hours'], 1);
+                            }
+                            echo implode(' ', $parts);
+                            ?>
+                        </td>
+                        <td style="color:#ef4444;">¥<?= number_format($totalSpecialExpenditure, 0) ?></td>
+                        <td style="color:#ef4444;font-weight:600;">¥-<?= number_format($totalSpecialExpenditure, 0) ?></td>
+                    </tr>
+                    <?php endif; ?>
                 </tbody>
                 <tfoot>
                     <tr class="total-row">
@@ -205,9 +241,9 @@ foreach ($feePlans as $fp):
                         <td><?= number_format($totalStudents) ?></td>
                         <td style="color:#3b82f6;font-weight:600;">¥<?= number_format($planTotalIncome, 0) ?></td>
                         <td><?= number_format($totalAllTeacherHours, 1) ?>节</td>
-                        <td style="color:#ef4444;">¥<?= number_format($planTotalExpenditure, 0) ?></td>
-                        <td style="color:<?= ($planTotalIncome - $planTotalExpenditure) >= 0 ? '#10b981' : '#ef4444' ?>;font-weight:600;">
-                            ¥<?= number_format($planTotalIncome - $planTotalExpenditure, 0) ?>
+                        <td style="color:#ef4444;">¥<?= number_format($planTotalExpenditure + $totalSpecialExpenditure, 0) ?></td>
+                        <td style="color:<?= ($planTotalIncome - $planTotalExpenditure - $totalSpecialExpenditure) >= 0 ? '#10b981' : '#ef4444' ?>;font-weight:600;">
+                            ¥<?= number_format($planTotalIncome - $planTotalExpenditure - $totalSpecialExpenditure, 0) ?>
                         </td>
                     </tr>
                 </tfoot>
@@ -239,6 +275,10 @@ foreach ($feePlans as $fp):
             <div class="stat-value"><?= number_format($totalExtTeacherLessons) ?></div>
             <div class="stat-label">校外教师课时</div>
         </div>
+        <div class="stat-card">
+            <div class="stat-value"><?= number_format($totalSpecialExpenditure) ?></div>
+            <div class="stat-label">特殊人员支出</div>
+        </div>
     </div>
 </div>
 
@@ -256,7 +296,8 @@ foreach ($feePlans as $fp):
         <div class="card-header"><h3>💡 提示</h3></div>
         <div style="font-size:14px;color:var(--text-secondary);line-height:1.8;">
             <p>• 收入 = 出勤总人次 × 学生单价（按封顶价约束）</p>
-            <p>• 支出 = 教师总课时（上课教师+校外教师）× 教师课时费</p>
+            <p>• 支出 = 教师课时支出 + 特殊人员（领导/后勤/校医）支出</p>
+            <p>• 普通教师课时由年级干事填写，特殊人员在"👤 特殊人员"页面设置</p>
             <p>• 可在"月度设置"中配置多套方案对比</p>
         </div>
     </div>

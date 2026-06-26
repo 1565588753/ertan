@@ -127,6 +127,20 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
 
         $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `special_staff` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `year` INT NOT NULL,
+                `month` INT NOT NULL,
+                `staff_type` VARCHAR(20) NOT NULL COMMENT '类型: 领导/后勤/校医',
+                `total_hours` DECIMAL(10,1) NOT NULL DEFAULT 0 COMMENT '总课时',
+                `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '课时单价(元)',
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY `uk_staff_month` (`year`, `month`, `staff_type`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        $pdo->exec("
             CREATE TABLE IF NOT EXISTS `admin_users` (
                 `id` INT AUTO_INCREMENT PRIMARY KEY,
                 `username` VARCHAR(50) NOT NULL UNIQUE,

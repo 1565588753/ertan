@@ -124,6 +124,22 @@ CREATE TABLE `fee_plans` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收费方案';
 
 -- ============================================
+-- 5d. 特殊人员表（领导/后勤/校医）
+-- ============================================
+DROP TABLE IF EXISTS `special_staff`;
+CREATE TABLE `special_staff` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `year` INT NOT NULL,
+    `month` INT NOT NULL,
+    `staff_type` VARCHAR(20) NOT NULL COMMENT '类型: 领导/后勤/校医',
+    `total_hours` DECIMAL(10,1) NOT NULL DEFAULT 0 COMMENT '总课时',
+    `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '课时单价(元)',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uk_staff_month` (`year`, `month`, `staff_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='特殊人员';
+
+-- ============================================
 -- 6. 管理员表
 -- ============================================
 DROP TABLE IF EXISTS `admin_users`;
