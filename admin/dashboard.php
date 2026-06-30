@@ -265,6 +265,87 @@ foreach ($feePlans as $fp):
 </div>
 <?php endif; ?>
 
+<!-- ===== 各年级盈亏总览 ===== -->
+<?php if (!empty($feePlans)): 
+$planGradeBalances = [];
+foreach ($feePlans as $fp):
+    $unitPrice = floatval($fp['unit_price']);
+    $capPrice = floatval($fp['cap_price']);
+    $teacherPayRate = floatval($fp['teacher_pay_rate'] ?? 0);
+    $gradeBalances = [];
+    foreach ($gradeStats as $gs) {
+        $gradeIncome = 0;
+        if (!empty($gs['attendance_groups'])) {
+            foreach ($gs['attendance_groups'] as $ag) {
+                $gradeIncome += $ag['student_count'] * min($ag['lesson_number'] * $unitPrice, $capPrice);
+            }
+        }
+        $teacherTotal = $gs['teacher_hours'] + $gs['ext_teacher_lessons'];
+        $expenditure = $teacherTotal * $teacherPayRate + $totalSpecialExpenditure;
+        $balance = $gradeIncome - $expenditure;
+        $gradeBalances[] = ['name' => $gs['name'], 'income' => $gradeIncome, 'expenditure' => $expenditure, 'balance' => $balance];
+    }
+    $planGradeBalances[] = ['plan_name' => $fp['plan_name'], 'grades' => $gradeBalances];
+endforeach;
+?>
+<div class="card">
+    <div class="card-header">
+        <h2>📊 各年级盈亏总览</h2>
+        <span style="font-size:13px;color:var(--text-secondary);">展示每套方案下各年级的盈亏状况</span>
+    </div>
+    <?php foreach ($planGradeBalances as $pgb): ?>
+    <?php 
+    $surplusCount = count(array_filter($pgb['grades'], fn($g) => $g['balance'] >= 0));
+    $deficitCount = count($pgb['grades']) - $surplusCount;
+    ?>
+    <div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+            <h3 style="font-size:15px;margin:0;"><?= htmlspecialchars($pgb['plan_name']) ?></h3>
+            <span class="badge" style="background:#f0fdf4;color:#16a34a;font-size:12px;">盈 <?= $surplusCount ?>个</span>
+            <?php if ($deficitCount > 0): ?>
+            <span class="badge" style="background:#fef2f2;color:#ef4444;font-size:12px;">亏 <?= $deficitCount ?>个</span>
+            <?php endif; ?>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;">
+            <?php foreach ($pgb['grades'] as $gb): 
+                $ratio = $gb['expenditure'] > 0 ? ($gb['income'] / $gb['expenditure'] * 100) : 0;
+            ?>
+            <div style="background:#fff;border-radius:12px;padding:14px;border:1px solid <?= $gb['balance'] >= 0 ? '#bbf7d0' : '#fecaca' ?>;box-shadow:0 1px 4px rgba(0,0,0,0.04);<?= $gb['balance'] >= 0 ? '' : 'background:#fef2f2;' ?>">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <strong style="font-size:14px;"><?= htmlspecialchars($gb['name']) ?></strong>
+                    <span style="font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;<?= $gb['balance'] >= 0 ? 'background:#f0fdf4;color:#16a34a;' : 'background:#fef2f2;color:#ef4444;' ?>">
+                        <?= $gb['balance'] >= 0 ? '✓ 盈' : '✗ 亏' ?>
+                    </span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);padding:2px 0;">
+                    <span>收入</span>
+                    <span style="color:#3b82f6;font-weight:600;">¥<?= number_format($gb['income'], 0) ?></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);padding:2px 0;">
+                    <span>支出</span>
+                    <span style="color:#ef4444;font-weight:600;">¥<?= number_format($gb['expenditure'], 0) ?></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0 0;margin-top:4px;border-top:1px solid #f0f0f0;">
+                    <span style="font-weight:600;">结余</span>
+                    <span style="font-weight:700;color:<?= $gb['balance'] >= 0 ? '#16a34a' : '#ef4444' ?>;">
+                        <?= $gb['balance'] >= 0 ? '+' : '' ?>¥<?= number_format($gb['balance'], 0) ?>
+                    </span>
+                </div>
+                <?php if ($ratio > 0): ?>
+                <div style="margin-top:6px;">
+                    <div style="font-size:11px;color:var(--text-light);margin-bottom:2px;">收支比 <?= number_format($ratio, 1) ?>%</div>
+                    <div style="height:4px;background:#f0f0f0;border-radius:2px;overflow:hidden;">
+                        <div style="height:100%;width:<?= min($ratio, 100) ?>%;background:<?= $ratio >= 100 ? '#16a34a' : '#ef4444' ?>;border-radius:2px;"></div>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endforeach; ?>
+</div>
+
 <!-- ===== 各年级收支明细 ===== -->
 <div class="card">
     <div class="card-header">
@@ -291,12 +372,14 @@ foreach ($feePlans as $fp):
                         <th>教师总课时</th>
                         <th>课时支出</th>
                         <th>年级结余</th>
+                        <th>状态</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php 
                     $planTotalIncome = 0;
                     $planTotalExpenditure = 0;
+                    $planSurplus = 0; $planDeficit = 0;
                     foreach ($gradeStats as $gs):
                         $gradeIncome = 0;
                         if (!empty($gs['attendance_groups'])) {
@@ -310,6 +393,7 @@ foreach ($feePlans as $fp):
                         $gBalance = $fee - $expenditure;
                         $planTotalIncome += $fee;
                         $planTotalExpenditure += $expenditure;
+                        if ($gBalance >= 0) $planSurplus++; else $planDeficit++;
                     ?>
                     <tr>
                         <td><strong><?= htmlspecialchars($gs['name']) ?></strong></td>
@@ -318,7 +402,12 @@ foreach ($feePlans as $fp):
                         <td><?= number_format($teacherTotal, 1) ?>节</td>
                         <td style="color:#ef4444;">¥<?= number_format($expenditure, 0) ?></td>
                         <td style="color:<?= $gBalance >= 0 ? '#10b981' : '#ef4444' ?>;font-weight:600;">
-                            ¥<?= number_format($gBalance, 0) ?>
+                            <?= $gBalance >= 0 ? '+' : '' ?>¥<?= number_format($gBalance, 0) ?>
+                        </td>
+                        <td>
+                            <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;<?= $gBalance >= 0 ? 'background:#f0fdf4;color:#16a34a;' : 'background:#fef2f2;color:#ef4444;' ?>">
+                                <?= $gBalance >= 0 ? '✅ 盈余' : '⚠️ 亏损' ?>
+                            </span>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -337,7 +426,8 @@ foreach ($feePlans as $fp):
                             ?>
                         </td>
                         <td style="color:#ef4444;">¥<?= number_format($totalSpecialExpenditure, 0) ?></td>
-                        <td style="color:#ef4444;font-weight:600;">¥-<?= number_format($totalSpecialExpenditure, 0) ?></td>
+                        <td style="color:#ef4444;font-weight:600;">-¥<?= number_format($totalSpecialExpenditure, 0) ?></td>
+                        <td><span style="padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;background:#fef2f2;color:#ef4444;">⚠️ 支出</span></td>
                     </tr>
                     <?php endif; ?>
                 </tbody>
@@ -349,7 +439,15 @@ foreach ($feePlans as $fp):
                         <td><?= number_format($totalAllTeacherHours, 1) ?>节</td>
                         <td style="color:#ef4444;">¥<?= number_format($planTotalExpenditure + $totalSpecialExpenditure, 0) ?></td>
                         <td style="color:<?= ($planTotalIncome - $planTotalExpenditure - $totalSpecialExpenditure) >= 0 ? '#10b981' : '#ef4444' ?>;font-weight:600;">
-                            ¥<?= number_format($planTotalIncome - $planTotalExpenditure - $totalSpecialExpenditure, 0) ?>
+                            <?= ($planTotalIncome - $planTotalExpenditure - $totalSpecialExpenditure) >= 0 ? '+' : '' ?>¥<?= number_format($planTotalIncome - $planTotalExpenditure - $totalSpecialExpenditure, 0) ?>
+                        </td>
+                        <td>
+                            <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;">
+                                <span style="background:#f0fdf4;color:#16a34a;padding:2px 6px;border-radius:4px;">盈<?= $planSurplus ?></span>
+                                <?php if ($planDeficit > 0): ?>
+                                <span style="background:#fef2f2;color:#ef4444;padding:2px 6px;border-radius:4px;">亏<?= $planDeficit ?></span>
+                                <?php endif; ?>
+                            </span>
                         </td>
                     </tr>
                 </tfoot>

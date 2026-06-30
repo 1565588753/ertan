@@ -209,8 +209,13 @@ adminHeader('统计报表');
     <div style="margin-bottom:16px;">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
             <?php foreach ($gs['plan_budgets'] as $pb): ?>
-            <div style="background:#fff;border-radius:12px;padding:12px 14px;border:1px solid #e0e0e0;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-                <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;"><?= htmlspecialchars($pb['plan_name']) ?></div>
+            <div style="background:#fff;border-radius:12px;padding:12px 14px;border:1px solid <?= $pb['balance'] >= 0 ? '#bbf7d0' : '#fecaca' ?>;box-shadow:0 1px 4px rgba(0,0,0,0.04);<?= $pb['balance'] < 0 ? 'background:#fefcfc;' : '' ?>">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <div style="font-size:14px;font-weight:700;color:var(--text);"><?= htmlspecialchars($pb['plan_name']) ?></div>
+                    <span style="font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;<?= $pb['balance'] >= 0 ? 'background:#f0fdf4;color:#16a34a;' : 'background:#fef2f2;color:#ef4444;' ?>">
+                        <?= $pb['balance'] >= 0 ? '✓ 盈' : '✗ 亏' ?>
+                    </span>
+                </div>
                 <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">
                     ¥<?= number_format($pb['unit_price'], 2) ?>/节 · 封顶¥<?= number_format($pb['cap_price'], 0) ?>
                     <br>教师¥<?= number_format($pb['teacher_pay_rate'], 0) ?>/节
