@@ -359,9 +359,12 @@ endforeach;
         $teacherPayRate = floatval($fp['teacher_pay_rate'] ?? 0);
     ?>
     <div style="margin-bottom:20px;">
-        <h3 style="font-size:15px;margin-bottom:8px;padding:8px 0;border-bottom:2px solid var(--primary);">
+        <h3 style="font-size:15px;margin-bottom:4px;padding:8px 0 4px;border-bottom:2px solid var(--primary);">
             <?= htmlspecialchars($fp['plan_name']) ?>
         </h3>
+        <div style="font-size:12px;color:var(--text-secondary);padding:2px 0 6px;border-bottom:2px solid var(--primary);margin-bottom:8px;">
+            学生 ¥<?= number_format($unitPrice, 2) ?>/节 · 封顶 ¥<?= number_format($capPrice, 0) ?> · 教师 ¥<?= number_format($teacherPayRate, 0) ?>/节
+        </div>
         <div class="table-responsive">
             <table class="data-table">
                 <thead>
