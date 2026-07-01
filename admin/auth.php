@@ -44,10 +44,11 @@ function adminHeader($title = '后台管理') {
             📊 管理后台
             <small>v<?= APP_VERSION ?></small>
         </div>
-        <a href="/admin/dashboard.php" class="<?= basename($_SERVER['PHP_SELF']) === 'dashboard.php' ? 'active' : '' ?>">📊 概览</a>
+        <a href="/admin/dashboard.php" class="<?= basename($_SERVER['PHP_SELF']) === 'dashboard.php' ? 'active' : '' ?>">💰 预算概览</a>
         <a href="/admin/settings.php" class="<?= basename($_SERVER['PHP_SELF']) === 'settings.php' ? 'active' : '' ?>">⚙️ 月度设置</a>
         <a href="/admin/classes.php" class="<?= basename($_SERVER['PHP_SELF']) === 'classes.php' ? 'active' : '' ?>">🏫 班级管理</a>
         <a href="/admin/statistics.php" class="<?= basename($_SERVER['PHP_SELF']) === 'statistics.php' ? 'active' : '' ?>">📈 统计报表</a>
+        <a href="/admin/special_staff.php" class="<?= basename($_SERVER['PHP_SELF']) === 'special_staff.php' ? 'active' : '' ?>">👤 特殊人员</a>
         <a href="/admin/teacher_lessons.php" class="<?= basename($_SERVER['PHP_SELF']) === 'teacher_lessons.php' ? 'active' : '' ?>">👩‍🏫 教师课时</a>
         <div class="sidebar-bottom">
             <a href="/admin/logout.php" style="color:rgba(255,255,255,0.5);">🚪 退出登录</a>

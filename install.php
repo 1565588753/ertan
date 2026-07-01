@@ -54,11 +54,21 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 `grade_id` INT NOT NULL,
                 `year` INT NOT NULL,
                 `month` INT NOT NULL,
-                `teaching_days` INT NOT NULL DEFAULT 0 COMMENT '上课天数',
-                `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每节课单价(元)',
-                `cap_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每人封顶价(元)',
+                `teaching_days` INT NOT NULL DEFAULT 0 COMMENT '上课节数',
+                `teacher_total_hours` DECIMAL(10,1) NOT NULL DEFAULT 0 COMMENT '年级总课时(发放统计)',
                 FOREIGN KEY (`grade_id`) REFERENCES `grades`(`id`) ON DELETE CASCADE,
                 UNIQUE KEY `uk_grade_month` (`grade_id`, `year`, `month`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `fee_settings` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `year` INT NOT NULL,
+                `month` INT NOT NULL,
+                `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每节课单价(元)',
+                `cap_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每人封顶价(元)',
+                UNIQUE KEY `uk_month` (`year`, `month`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
 
@@ -79,6 +89,33 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
 
         $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `fee_plans` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `year` INT NOT NULL,
+                `month` INT NOT NULL,
+                `plan_name` VARCHAR(50) NOT NULL COMMENT '方案名称',
+                `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每节课单价(元)',
+                `cap_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '每人封顶价(元)',
+                `teacher_pay_rate` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '教师课时费(元)',
+                `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序',
+                UNIQUE KEY `uk_plan` (`year`, `month`, `plan_name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `teacher_hours` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `grade_id` INT NOT NULL,
+                `teacher_name` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '教师姓名',
+                `hours` DECIMAL(10,1) NOT NULL DEFAULT 0 COMMENT '课时数',
+                `year` INT NOT NULL,
+                `month` INT NOT NULL,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (`grade_id`) REFERENCES `grades`(`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        $pdo->exec("
             CREATE TABLE IF NOT EXISTS `teacher_lessons` (
                 `id` INT AUTO_INCREMENT PRIMARY KEY,
                 `grade_id` INT NOT NULL,
@@ -87,6 +124,20 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 `year` INT NOT NULL,
                 `month` INT NOT NULL,
                 FOREIGN KEY (`grade_id`) REFERENCES `grades`(`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `special_staff` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `year` INT NOT NULL,
+                `month` INT NOT NULL,
+                `staff_type` VARCHAR(20) NOT NULL COMMENT '类型: 领导/后勤/校医',
+                `total_hours` DECIMAL(10,1) NOT NULL DEFAULT 0 COMMENT '总课时',
+                `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '课时单价(元)',
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY `uk_staff_month` (`year`, `month`, `staff_type`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ");
 
@@ -124,6 +175,27 @@ if ($step === 1 && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $configContent .= "define('DB_USER', '{$user}');\n";
         $configContent .= "define('DB_PASS', '{$pass}');\n";
         $configContent .= "define('DB_CHARSET', 'utf8mb4');\n";
+        $configContent .= "\n";
+        $configContent .= "// 应用配置\n";
+        $configContent .= "define('APP_NAME', '课后服务预算管理系统');\n";
+        $configContent .= "define('APP_VERSION', '1.0.0');\n";
+        $configContent .= "define('CURRENT_YEAR', date('Y'));\n";
+        $configContent .= "define('CURRENT_MONTH', intval(date('m')));\n";
+        $configContent .= "\n";
+        $configContent .= "// 年级列表\n";
+        $configContent .= "\$GRADES = [\n";
+        $configContent .= "    1 => '一年级',\n";
+        $configContent .= "    2 => '二年级',\n";
+        $configContent .= "    3 => '三年级',\n";
+        $configContent .= "    4 => '四年级',\n";
+        $configContent .= "    5 => '五年级',\n";
+        $configContent .= "    6 => '六年级'\n";
+        $configContent .= "];\n";
+        $configContent .= "\n";
+        $configContent .= "// 错误报告\n";
+        $configContent .= "error_reporting(E_ALL);\n";
+        $configContent .= "ini_set('display_errors', 0);\n";
+        $configContent .= "ini_set('log_errors', 1);\n";
 
         file_put_contents(__DIR__ . '/config.php', $configContent);
 
