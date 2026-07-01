@@ -348,6 +348,7 @@ endforeach;
     </div>
     <?php endforeach; ?>
 </div>
+<?php endif; ?>
 
 <!-- ===== 各年级收支明细 ===== -->
 <div class="card">
