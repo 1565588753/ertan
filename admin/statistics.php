@@ -114,7 +114,7 @@ foreach ($gradeStats as &$gs) {
         }
         
         $totalTeacherAll = $totalTeacherHours + $totalExtTeacherLessons;
-        $expenditure = $totalTeacherAll * $teacherPayRate + $totalSpecialExpenditure;
+        $expenditure = $totalTeacherAll * $teacherPayRate;
         $balance = $income - $expenditure;
         
         $planBudgets[] = [
@@ -271,9 +271,6 @@ adminHeader('统计报表');
                     <div style="font-weight:600;color:var(--text);margin-top:8px;margin-bottom:4px;">📉 支出</div>
                     <div class="row"><span class="label">教师总课时</span><span class="value"><?= number_format($gs['total_teacher_hours'] + $gs['total_ext_teacher_lessons'], 1) ?></span></div>
                     <div class="row"><span class="label">× 教师课时费</span><span class="value">¥<?= number_format($pb['teacher_pay_rate'], 0) ?></span></div>
-                    <?php if ($totalSpecialExpenditure > 0): ?>
-                    <div class="row"><span class="label">+ 特殊人员</span><span class="value">¥<?= number_format($totalSpecialExpenditure, 0) ?></span></div>
-                    <?php endif; ?>
                     <div class="row total"><span class="label">支出</span><span class="value">¥<?= number_format($pb['expenditure'], 0) ?></span></div>
                     <div style="border-top:1px dashed var(--border);margin:6px 0 4px;"></div>
                     <div class="row"><span class="label">结余</span><span class="value" style="color:<?= $pb['balance'] >= 0 ? '#10b981' : '#ef4444' ?>;">¥<?= number_format($pb['balance'], 0) ?></span></div>

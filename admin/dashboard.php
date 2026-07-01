@@ -281,7 +281,7 @@ foreach ($feePlans as $fp):
             }
         }
         $teacherTotal = $gs['teacher_hours'] + $gs['ext_teacher_lessons'];
-        $expenditure = $teacherTotal * $teacherPayRate + $totalSpecialExpenditure;
+        $expenditure = $teacherTotal * $teacherPayRate;
         $balance = $gradeIncome - $expenditure;
         $gradeBalances[] = ['name' => $gs['name'], 'income' => $gradeIncome, 'expenditure' => $expenditure, 'balance' => $balance];
     }
