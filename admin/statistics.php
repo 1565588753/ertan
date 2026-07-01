@@ -193,6 +193,14 @@ adminHeader('统计报表');
         </div>
         <button type="submit" class="btn btn-primary btn-sm">查询</button>
     </form>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="export.php?type=attendance&year=<?= $year ?>&month=<?= $month ?>&grade_id=<?= $gradeFilter ?>" class="btn btn-sm" style="background:#28a745;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:13px;">
+            📥 导出各班考勤
+        </a>
+        <a href="export.php?type=statistics&year=<?= $year ?>&month=<?= $month ?>&grade_id=<?= $gradeFilter ?>" class="btn btn-sm" style="background:#17a2b8;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:13px;">
+            📥 导出预算统计
+        </a>
+    </div>
 </div>
 
 <?php foreach ($gradeStats as $gs): ?>

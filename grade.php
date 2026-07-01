@@ -201,6 +201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $selectedClassId > 0 && $selectedCl
     <!-- 班级选择页面 -->
     <div class="lesson-count-info">
         <label>📚 请选择要填写的班级</label>
+        <a href="export.php?type=attendance&year=<?= $year ?>&month=<?= $month ?>&grade_id=<?= $gradeId ?>" target="_blank" style="display:inline-block;margin-left:10px;background:#28a745;color:#fff;padding:4px 10px;border-radius:6px;font-size:12px;text-decoration:none;">📥 导出Excel</a>
     </div>
     <div class="class-grid">
         <?php foreach ($classes as $class): 

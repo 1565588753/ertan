@@ -291,7 +291,10 @@ endforeach;
 <div class="card">
     <div class="card-header">
         <h2>📊 各年级盈亏总览</h2>
-        <span style="font-size:13px;color:var(--text-secondary);">展示每套方案下各年级的盈亏状况</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:13px;color:var(--text-secondary);">每套方案下各年级的盈亏状况</span>
+            <a href="export.php?type=statistics&year=<?= $year ?>&month=<?= $month ?>" target="_blank" style="background:#17a2b8;color:#fff;text-decoration:none;padding:4px 10px;border-radius:6px;font-size:12px;">📥 导出Excel</a>
+        </div>
     </div>
     <?php foreach ($planGradeBalances as $pgb): ?>
     <?php 
